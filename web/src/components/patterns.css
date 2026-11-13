@@ -338,6 +338,42 @@
 .mb-page-title { margin: var(--space-2) 0 var(--space-6); font-size: 28px; font-weight: var(--weight-heavy); letter-spacing: -0.02em; color: var(--dark); }
 
 /* =========================================================
+   Login / sign-up card (v1 02-login.png, 03-signup.png)
+   ========================================================= */
+.mb-auth {
+  width: 100%; max-width: 440px; margin: var(--space-4) auto 0; padding: var(--space-8);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); box-shadow: var(--shadow-sm);
+}
+.mb-auth--wide { max-width: 520px; }
+.mb-auth__title { font-size: var(--text-2xl); font-weight: var(--weight-heavy); letter-spacing: -0.02em; color: var(--dark); }
+.mb-auth__sub { margin-top: var(--space-1); font-size: 14px; color: var(--muted); }
+.mb-auth__body { display: grid; gap: var(--space-4); margin-top: var(--space-6); }
+.mb-auth__alt { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--space-2); margin-top: var(--space-5); font-size: var(--text-sm); color: var(--muted); }
+.mb-auth__note { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--muted); text-align: center; }
+.mb-auth__note strong { color: var(--dark); font-variant-numeric: tabular-nums; }
+.mb-auth__row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+
+.mb-seg {
+  display: grid; grid-auto-columns: 1fr; grid-auto-flow: column; gap: var(--space-1);
+  padding: var(--space-1); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-control);
+}
+.mb-seg__btn {
+  height: var(--control-height-sm); background: none; border: 0; border-radius: var(--radius-sm);
+  font-size: 14px; font-weight: var(--weight-semibold); color: var(--muted);
+  transition: background-color var(--transition), color var(--transition);
+}
+.mb-seg__btn:hover { color: var(--primary); }
+.mb-seg__btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.mb-seg__btn[aria-selected="true"] { background: var(--surface); color: var(--dark); box-shadow: var(--shadow-sm); }
+
+.mb-otp { height: 52px; font-size: var(--text-xl); font-weight: var(--weight-bold); letter-spacing: 0.5em; text-align: center; font-variant-numeric: tabular-nums; }
+.mb-otp::placeholder { letter-spacing: 0.5em; }
+
+.mb-idhl { padding: var(--space-5); text-align: center; background: var(--primary-soft); border: 1px solid var(--primary-border); border-radius: var(--radius-card); }
+.mb-idhl__value { margin: var(--space-2) 0; font-size: 28px; font-weight: var(--weight-heavy); letter-spacing: 0.04em; color: var(--primary); overflow-wrap: anywhere; }
+.mb-idhl__help { font-size: 13px; color: var(--text); }
+
+/* =========================================================
    Responsive
    ========================================================= */
 @media (max-width: 1180px) {
@@ -385,6 +421,9 @@
   .mb-msg, .mb-msg--block { max-width: 100%; }
 }
 @media (max-width: 560px) {
+  .mb-auth { padding: var(--space-6) var(--space-5); }
+  .mb-auth__row { grid-template-columns: minmax(0, 1fr); }
+  .mb-idhl__value { font-size: var(--text-xl); }
   .mb-avail { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .mb-dash__tools .mb-btn { width: 100%; }
   .mb-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }

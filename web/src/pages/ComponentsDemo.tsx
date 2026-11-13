@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  AppShell, Badge, Button, Card, EmptyState, Input, Modal, Select, Table, Tabs, useToast,
+  AppShell, AuthCard, AuthNote, Badge, Button, Card, EmptyState, IdHighlight, Input, Modal, OtpInput, Segmented, Select, Table, Tabs, useToast,
   type Column,
 } from '../components';
 import { demoUser, foundationNav } from '../lib/nav';
@@ -39,6 +39,8 @@ const statusGroups = {
 };
 
 export function ComponentsDemo() {
+  const [seg, setSeg] = useState('staff');
+  const [otp, setOtp] = useState('');
   const toast = useToast();
   const [tab, setTab] = useState('queue');
   const [modalOpen, setModalOpen] = useState(false);
@@ -158,6 +160,20 @@ export function ComponentsDemo() {
           <EmptyState title="No appointments today" text="Bookings made at reception or online will appear here in real time." action={<Button variant="soft" size="sm">Register walk-in</Button>} />
         </Card>
       </div>
+
+      <Card title="Login / sign-up (v1 02-login, 03-signup)" subtitle="AuthCard · Segmented · OtpInput · IdHighlight · AuthNote — used by /login, /register, /set-password">
+        <div className="grid-2">
+          <AuthCard title="Welcome to MediBook" subtitle="Sign in with your hospital-issued staff ID.">
+            <Segmented label="Sign in as" value={seg} onChange={setSeg} options={[{ id: 'staff', label: 'Staff' }, { id: 'patient', label: 'Patient' }]} />
+            <OtpInput value={otp} onChange={setOtp} hint={<>Code expires in <strong>4:32</strong></>} />
+            <Button block>Verify &amp; sign in</Button>
+            <AuthNote>Didn’t get it? Resend in <strong>0:42</strong></AuthNote>
+          </AuthCard>
+          <AuthCard title="You’re all set" subtitle="Welcome to MediBook, Rahul.">
+            <IdHighlight label="Your Patient ID" value="MB-2026-000001">Use this ID at reception on every visit.</IdHighlight>
+          </AuthCard>
+        </div>
+      </Card>
 
       <Modal
         open={modalOpen}

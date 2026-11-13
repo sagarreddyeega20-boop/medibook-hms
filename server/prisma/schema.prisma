@@ -1039,6 +1039,16 @@ model AccessOverride {
   @@map("access_overrides")
 }
 
+// Atomic counters for human-readable IDs: staff codes (HMS-DOC-0007) and MRNs (MB-2026-000001).
+// Accessed with raw SQL (INSERT … ON CONFLICT … RETURNING) so concurrent creates never reuse a number.
+model IdSequence {
+  key       String   @id // e.g. "staff:DOC", "mrn:2026"
+  value     Int      @default(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("id_sequences")
+}
+
 model Setting {
   key         String   @id
   value       Json

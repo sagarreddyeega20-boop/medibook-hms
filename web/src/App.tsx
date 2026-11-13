@@ -1,4 +1,9 @@
 import { Route, Routes } from 'react-router-dom';
+import { AuditLog } from './pages/admin/AuditLog';
+import { StaffRoles } from './pages/admin/StaffRoles';
+import { Login } from './pages/auth/Login';
+import { Register } from './pages/auth/Register';
+import { SetPassword } from './pages/auth/SetPassword';
 import { ComponentsDemo } from './pages/ComponentsDemo';
 import { MobileChatDemo } from './pages/demo/MobileChatDemo';
 import { PatientAppointmentsDemo } from './pages/demo/PatientAppointmentsDemo';
@@ -7,13 +12,39 @@ import { PaymentDemo } from './pages/demo/PaymentDemo';
 import { StaffDashboardDemo } from './pages/demo/StaffDashboardDemo';
 import { Home } from './pages/Home';
 import { NotFound } from './pages/NotFound';
+import { PatientHome } from './pages/patient/PatientHome';
+import { RoleHome } from './pages/staff/RoleHome';
+import { RequireAuth, RootRedirect } from './lib/auth';
+import type { Role } from './lib/roles';
+
+const ADMINS: Role[] = ['SUPER_ADMIN', 'ADMIN'];
+const guard = (roles: Role[], el: JSX.Element) => <RequireAuth roles={roles}>{el}</RequireAuth>;
 
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
+      <Route path="/" element={<RootRedirect />} />
+
+      {/* Public: login (Staff | Patient), patient sign-up, staff set-password link */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/set-password" element={<SetPassword />} />
+
+      {/* Each role's home (placeholder dashboards until their modules are built) */}
+      <Route path="/admin" element={guard(ADMINS, <RoleHome />)} />
+      <Route path="/admin/staff" element={guard(ADMINS, <StaffRoles />)} />
+      <Route path="/admin/audit" element={guard(ADMINS, <AuditLog />)} />
+      <Route path="/reception" element={guard(['RECEPTIONIST'], <RoleHome />)} />
+      <Route path="/doctor" element={guard(['DOCTOR'], <RoleHome />)} />
+      <Route path="/lab" element={guard(['LAB_TECH'], <RoleHome />)} />
+      <Route path="/radiology" element={guard(['RADIOLOGY_TECH'], <RoleHome />)} />
+      <Route path="/pharmacy" element={guard(['PHARMACIST'], <RoleHome />)} />
+      <Route path="/accounts" element={guard(['ACCOUNTS'], <RoleHome />)} />
+      <Route path="/patient" element={guard(['PATIENT'], <PatientHome />)} />
+
+      {/* Developer reference: foundation overview + v1 pattern demos */}
+      <Route path="/demo" element={<Home />} />
       <Route path="/demo/components" element={<ComponentsDemo />} />
-      {/* v1 pattern demos — reference implementations for every new screen */}
       <Route path="/demo/staff" element={<StaffDashboardDemo />} />
       <Route path="/demo/patient" element={<PatientHomeDemo />} />
       <Route path="/demo/patient/appointments" element={<PatientAppointmentsDemo />} />

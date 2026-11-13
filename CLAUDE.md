@@ -76,8 +76,9 @@ The HMS keeps the v1 look: layout and patterns, not just colours. **Before build
 | Chat bubbles, slot chips, doctor cards, confirmation | `ChatPanel`, `ChatMessage`, `ChatBlock`, `DoctorSlotCard`, `SlotChip`, `ConfirmationCard`, `QuickReplies`, `ChatAppointment`, `TypingIndicator` | `/demo/patient`, `/demo/patient/chat` |
 | Payment page (order summary + method cards) | `OrderSummary`, `PaymentMethodCard`, `OptionTiles`, `OrDivider`, `TrustNote`, `Button size="lg"` | `/demo/patient/payment` |
 | Speciality pills | `Pill` | `/demo/patient` |
+| Login / sign-up card (segmented Staff \| Patient switch, OTP field, Patient ID highlight) | `AuthCard`, `Segmented`, `OtpInput`, `IdHighlight`, `AuthNote` | `/demo/components`, `/login`, `/register` |
 
-Not yet a component: the v1 login / sign-up page (centred card with a Patient | Doctor segmented switch, `02-login.png`, `03-signup.png`). Build it as a component when the auth screens are built.
+
 
 ### Reference screenshots (`docs/ui-reference/`)
 Captured from MediBook v1 running on its seed data, at 1440px wide (07 at 390px):

@@ -22,4 +22,5 @@ export { PatientGrid, PatientLayout, PatientNavbar, type NavbarLink } from './Pa
 export { AvailabilityChips, NowConsultingCard, StatCard, StatGrid, type DayAvailability, type StatTone } from './Dashboard';
 export { AppointmentCard, DateTile, HeroBanner, PersonList, Pill, SideCard } from './PatientCards';
 export { ChatAppointment, ChatBlock, ChatMessage, ChatPanel, ConfirmationCard, DoctorSlotCard, QuickReplies, SlotChip, TypingIndicator } from './Chat';
+export { AuthCard, AuthNote, IdHighlight, OtpInput, Segmented, type SegmentOption } from './Auth';
 export { OptionTiles, OrDivider, OrderSummary, PaymentMethodCard, SummaryRows, TrustNote } from './Payment';

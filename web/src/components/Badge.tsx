@@ -19,6 +19,12 @@ export const STATUS_TONES: Record<string, BadgeTone> = {
   PENDING: 'pending', FAILED: 'danger', REFUNDED: 'neutral', PAY_AT_CLINIC: 'neutral',
   // doctor live status
   AVAILABLE: 'success', RUNNING_LATE: 'danger', OFF_DUTY: 'neutral', ON_LEAVE: 'neutral',
+  // staff accounts
+  ACTIVE: 'success', INVITED: 'pending', LOCKED: 'danger', DEACTIVATED: 'neutral',
+  // audit events
+  LOGIN_SUCCESS: 'success', LOGIN_FAILED: 'warning', ACCOUNT_LOCKED: 'danger', OTP_FAILED: 'warning', OTP_LOCKED: 'danger',
+  LOGOUT: 'neutral', PASSWORD_SET: 'info', STAFF_CREATED: 'primary', STAFF_INVITE_SENT: 'info', ROLE_CHANGED: 'pending',
+  STAFF_DEACTIVATED: 'neutral', PATIENT_REGISTERED: 'primary', ACCESS_DENIED: 'danger',
 };
 
 /** Labels that differ from the plain "Title case" of the status code. */
@@ -26,6 +32,9 @@ export const STATUS_LABELS: Record<string, string> = {
   HELD: 'Awaiting payment',
   AWAITING: 'Awaiting doctor',
   PAY_AT_CLINIC: 'Pay at clinic',
+  INVITED: 'Invite sent',
+  OTP_FAILED: 'OTP failed',
+  OTP_LOCKED: 'OTP locked',
 };
 
 export const statusLabel = (s: string) =>

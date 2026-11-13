@@ -1,10 +1,11 @@
 import type { NavSection } from '../components';
 
-/** Foundation navigation. Role-specific sections are added as modules are built. */
+/** Developer navigation for the /demo pages. Signed-in users get role menus from lib/roles.tsx. */
 export const foundationNav: NavSection[] = [
   {
     items: [
-      { to: '/', label: 'Overview', end: true },
+      { to: '/demo', label: 'Overview', end: true },
+      { to: '/login', label: 'Login' },
       { to: '/demo/components', label: 'Components' },
     ],
   },

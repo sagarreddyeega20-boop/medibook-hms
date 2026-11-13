@@ -12,7 +12,21 @@ const EnvSchema = z.object({
   REDIS_URL: z.string().default('redis://localhost:6380'),
 
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
-  SESSION_IDLE_MINUTES: z.coerce.number().int().positive().default(15),
+  /** Public URL of the web app, used in emailed links (set-password). */
+  APP_URL: z.string().url().default('http://localhost:5173'),
+
+  // Sessions (Redis-backed, httpOnly cookie)
+  SESSION_IDLE_MINUTES: z.coerce.number().int().positive().default(15), // staff
+  PATIENT_SESSION_IDLE_MINUTES: z.coerce.number().int().positive().default(30),
+  SESSION_MAX_HOURS: z.coerce.number().int().positive().default(12), // absolute lifetime
+  COOKIE_SECURE: bool.default(true), // browsers treat http://localhost as secure, so true works in dev
+
+  // Staff passwords
+  BCRYPT_COST: z.coerce.number().int().min(10).max(15).default(12),
+  PASSWORD_MIN_LENGTH: z.coerce.number().int().default(10),
+  PASSWORD_MAX_ATTEMPTS: z.coerce.number().int().default(5),
+  PASSWORD_LOCK_MINUTES: z.coerce.number().int().default(15),
+  SET_PASSWORD_LINK_HOURS: z.coerce.number().int().default(24),
 
   OTP_LENGTH: z.coerce.number().int().default(6),
   OTP_TTL_SECONDS: z.coerce.number().int().default(300),

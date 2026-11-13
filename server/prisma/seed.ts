@@ -1,22 +1,26 @@
 /**
- * Foundation seed (idempotent): roles, departments, a starter service catalogue,
- * settings, and the first Super Admin. Demo patients/doctors come in later steps.
+ * Seed (idempotent): roles + permissions, departments, a starter service catalogue, settings,
+ * the Super Admin and one demo user per role. Re-running resets demo passwords and unlocks accounts.
  */
 import { PrismaClient, type CatalogueCategory, type DepartmentKind, type RoleCode } from '@prisma/client';
-import { hashSecret } from '../src/lib/password.js';
+import { hashPassword } from '../src/lib/password.js';
+import { PERMISSIONS, ROLE_PERMISSIONS, type StaffRole } from '../src/modules/auth/permissions.js';
+import { formatMrn } from '../src/modules/patients/patients.service.js';
+import { nextStaffCode, ROLE_NAMES } from '../src/modules/staff/staff.service.js';
+import { nextSequence } from '../src/lib/sequence.js';
 
 const prisma = new PrismaClient();
 
-const roles: { code: RoleCode; name: string; description: string }[] = [
-  { code: 'SUPER_ADMIN', name: 'Super Admin', description: 'Everything Admin can, plus creating Admins, integrations, backups' },
-  { code: 'ADMIN', name: 'Admin', description: 'Staff, roles, departments, schedules, fees, audit log' },
-  { code: 'RECEPTIONIST', name: 'Receptionist', description: "All doctors' slots and status, bookings, check-in, counter payments" },
-  { code: 'DOCTOR', name: 'Doctor', description: 'Own schedule; timeline of treated patients; notes, prescriptions, orders, referrals' },
-  { code: 'LAB_TECH', name: 'Lab technician', description: 'Lab order queue; upload results' },
-  { code: 'RADIOLOGY_TECH', name: 'Radiology technician', description: 'Radiology order queue; upload results' },
-  { code: 'PHARMACIST', name: 'Pharmacist', description: 'Prescriptions to dispense, stock' },
-  { code: 'ACCOUNTS', name: 'Accounts', description: 'Revenue, transactions, counts by department, refunds' },
-  { code: 'PATIENT', name: 'Patient', description: 'Own visits, reports, bills, family members' },
+const roles: { code: RoleCode; description: string }[] = [
+  { code: 'SUPER_ADMIN', description: 'Everything Admin can, plus creating Admins, integrations, backups' },
+  { code: 'ADMIN', description: 'Staff, roles, departments, schedules, fees, audit log' },
+  { code: 'RECEPTIONIST', description: "All doctors' slots and status, bookings, check-in, counter payments" },
+  { code: 'DOCTOR', description: 'Own schedule; timeline of treated patients; notes, prescriptions, orders, referrals' },
+  { code: 'LAB_TECH', description: 'Lab order queue; upload results' },
+  { code: 'RADIOLOGY_TECH', description: 'Radiology order queue; upload results' },
+  { code: 'PHARMACIST', description: 'Prescriptions to dispense, stock' },
+  { code: 'ACCOUNTS', description: 'Revenue, transactions, counts by department, refunds' },
+  { code: 'PATIENT', description: 'Own visits, reports, bills, family members' },
 ];
 
 const departments: { code: string; name: string; kind: DepartmentKind }[] = [
@@ -27,6 +31,7 @@ const departments: { code: string; name: string; kind: DepartmentKind }[] = [
   { code: 'RAD', name: 'Radiology', kind: 'RADIOLOGY' },
   { code: 'PHARM', name: 'Pharmacy', kind: 'PHARMACY' },
   { code: 'BILL', name: 'Billing & Accounts', kind: 'BILLING' },
+  { code: 'FRONT', name: 'Front Office', kind: 'ADMIN' },
   { code: 'ADMIN', name: 'Administration', kind: 'ADMIN' },
 ];
 
@@ -47,9 +52,70 @@ const settings = [
   { key: 'pharmacy.lowStockDefault', value: 10, description: 'Default reorder level' },
 ];
 
+/** One demo account per staff role (emails are fake; OTPs print to the server console in development). */
+const demoStaff: { role: StaffRole; name: string; email: string; dept: string }[] = [
+  { role: 'ADMIN', name: 'Anita Rao', email: 'admin@medibook.local', dept: 'ADMIN' },
+  { role: 'RECEPTIONIST', name: 'Kavya Menon', email: 'reception@medibook.local', dept: 'FRONT' },
+  { role: 'DOCTOR', name: 'Dr. Ananya Iyer', email: 'doctor@medibook.local', dept: 'CARD' },
+  { role: 'LAB_TECH', name: 'Ravi Kumar', email: 'lab@medibook.local', dept: 'LAB' },
+  { role: 'RADIOLOGY_TECH', name: 'Meera Pillai', email: 'radiology@medibook.local', dept: 'RAD' },
+  { role: 'PHARMACIST', name: 'Suresh Babu', email: 'pharmacy@medibook.local', dept: 'PHARM' },
+  { role: 'ACCOUNTS', name: 'Farah Khan', email: 'accounts@medibook.local', dept: 'BILL' },
+];
+
+const demoPatient = { fullName: 'Rahul Sharma', email: 'patient@medibook.local', phone: '+91 98450 14410', dob: '1994-03-12' };
+
+function requirePassword(name: string, fallback?: string) {
+  const pw = process.env[name] ?? fallback;
+  if (!pw) throw new Error(`${name} is not set in .env`);
+  if (pw.length < 10) throw new Error(`${name} must be at least 10 characters`);
+  return pw;
+}
+
+async function upsertStaff(role: StaffRole, name: string, email: string, deptId: string, password: string) {
+  const roleRow = await prisma.role.findUniqueOrThrow({ where: { code: role } });
+  const passwordHash = await hashPassword(password);
+  const existing = await prisma.user.findUnique({ where: { email }, include: { staff: true } });
+
+  if (existing?.staff) {
+    let staffCode = existing.staff.staffCode;
+    if (!/^HMS-[A-Z]{3}-\d{4}$/.test(staffCode)) staffCode = await nextStaffCode(role, prisma); // migrate old IDs (e.g. SA0001)
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: existing.id }, data: { passwordHash, status: 'ACTIVE', failedLoginCount: 0, lockedUntil: null } }),
+      prisma.staff.update({ where: { id: existing.staff.id }, data: { staffCode, isActive: true, departmentId: deptId, fullName: name, designation: ROLE_NAMES[role] } }),
+      prisma.userRole.deleteMany({ where: { userId: existing.id } }),
+      prisma.userRole.create({ data: { userId: existing.id, roleId: roleRow.id } }),
+    ]);
+    return staffCode;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const staffCode = await nextStaffCode(role, tx);
+    await tx.user.create({
+      data: {
+        email, passwordHash,
+        roles: { create: { roleId: roleRow.id } },
+        staff: { create: { staffCode, fullName: name, designation: ROLE_NAMES[role], departmentId: deptId } },
+      },
+    });
+    return staffCode;
+  });
+}
+
 async function main() {
+  // Roles, permissions and the role → permission mapping (from src/modules/auth/permissions.ts)
   for (const r of roles) {
-    await prisma.role.upsert({ where: { code: r.code }, update: { name: r.name, description: r.description }, create: r });
+    await prisma.role.upsert({ where: { code: r.code }, update: { name: ROLE_NAMES[r.code], description: r.description }, create: { ...r, name: ROLE_NAMES[r.code] } });
+  }
+  const permIds: Record<string, string> = {};
+  for (const [code, description] of Object.entries(PERMISSIONS)) {
+    permIds[code] = (await prisma.permission.upsert({ where: { code }, update: { description }, create: { code, description } })).id;
+  }
+  await prisma.permission.deleteMany({ where: { code: { notIn: Object.keys(PERMISSIONS) } } });
+  for (const r of roles) {
+    const role = await prisma.role.findUniqueOrThrow({ where: { code: r.code } });
+    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
+    await prisma.rolePermission.createMany({ data: ROLE_PERMISSIONS[r.code].map((p) => ({ roleId: role.id, permissionId: permIds[p]! })) });
   }
 
   const deptIds: Record<string, string> = {};
@@ -67,27 +133,39 @@ async function main() {
     await prisma.setting.upsert({ where: { key: s.key }, update: {}, create: s });
   }
 
-  const staffCode = process.env.SEED_SUPERADMIN_STAFF_ID ?? 'SA0001';
-  const email = process.env.SEED_SUPERADMIN_EMAIL ?? 'superadmin@medibook.local';
-  const password = process.env.SEED_SUPERADMIN_PASSWORD;
-  if (!password) throw new Error('SEED_SUPERADMIN_PASSWORD is not set in .env');
+  // Accounts
+  const superEmail = (process.env.SEED_SUPERADMIN_EMAIL ?? 'superadmin@medibook.local').toLowerCase();
+  const superPassword = requirePassword('SEED_SUPERADMIN_PASSWORD');
+  const staffPassword = requirePassword('SEED_STAFF_PASSWORD', 'MediBook@2026');
 
-  const existing = await prisma.staff.findUnique({ where: { staffCode } });
-  if (!existing) {
-    const superRole = await prisma.role.findUniqueOrThrow({ where: { code: 'SUPER_ADMIN' } });
-    await prisma.user.create({
-      data: {
-        email,
-        passwordHash: await hashSecret(password),
-        roles: { create: { roleId: superRole.id } },
-        staff: {
-          create: { staffCode, fullName: 'Super Admin', designation: 'Super Administrator', departmentId: deptIds.ADMIN },
-        },
-      },
-    });
+  const printed: { role: string; login: string; email: string; password: string }[] = [];
+  const superCode = await upsertStaff('SUPER_ADMIN', 'Super Admin', superEmail, deptIds.ADMIN!, superPassword);
+  printed.push({ role: 'Super Admin', login: superCode, email: superEmail, password: '(SEED_SUPERADMIN_PASSWORD)' });
+  for (const s of demoStaff) {
+    const code = await upsertStaff(s.role, s.name, s.email, deptIds[s.dept]!, staffPassword);
+    printed.push({ role: ROLE_NAMES[s.role], login: code, email: s.email, password: '(SEED_STAFF_PASSWORD)' });
   }
 
-  console.log(`Seeded ${roles.length} roles, ${departments.length} departments, ${catalogue.length} catalogue items; Super Admin ${staffCode}.`);
+  // Demo patient (OTP-only, no password)
+  let patient = await prisma.patient.findFirst({ where: { user: { email: demoPatient.email } } });
+  if (!patient) {
+    const patientRole = await prisma.role.findUniqueOrThrow({ where: { code: 'PATIENT' } });
+    patient = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({ data: { email: demoPatient.email, roles: { create: { roleId: patientRole.id } } } });
+      const year = new Date().getUTCFullYear();
+      return tx.patient.create({
+        data: {
+          mrn: formatMrn(year, await nextSequence(`mrn:${year}`, tx)),
+          userId: user.id, firstName: 'Rahul', lastName: 'Sharma', gender: 'MALE',
+          dateOfBirth: new Date(`${demoPatient.dob}T00:00:00Z`), email: demoPatient.email, phone: demoPatient.phone, registrationSource: 'ONLINE',
+        },
+      });
+    });
+  }
+  printed.push({ role: 'Patient', login: `email OTP (${patient.mrn})`, email: demoPatient.email, password: '—' });
+
+  console.log(`Seeded ${roles.length} roles, ${Object.keys(PERMISSIONS).length} permissions, ${departments.length} departments, ${catalogue.length} catalogue items.`);
+  console.table(printed);
 }
 
 main()
