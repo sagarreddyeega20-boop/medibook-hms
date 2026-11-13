@@ -63,3 +63,61 @@ staffRouter.post('/:id/deactivate', requirePermission('staff:deactivate'), valid
 staffRouter.post('/:id/invite', requirePermission('staff:update'), validate({ params: idParams }), async (req, res) => {
   res.json(await staffService.sendInvite(actor(req, res), res.locals.valid.params.id));
 });
+
+/* ---------------- Departments ---------------- */
+
+const deptKind = z.enum(['CLINICAL', 'LAB', 'RADIOLOGY', 'PHARMACY', 'ADMIN', 'BILLING']);
+
+staffRouter.get('/departments', requirePermission('departments:manage'), async (_req, res) => {
+  res.json({ departments: await staffService.allDepartments() });
+});
+
+staffRouter.post(
+  '/departments',
+  requirePermission('departments:manage'),
+  validate({
+    body: z.object({
+      code: z.string().trim().regex(/^[A-Za-z]{2,8}$/, 'Code is 2–8 letters, e.g. ORTHO'),
+      name: z.string().trim().min(2, 'Enter the department name').max(80),
+      kind: deptKind,
+    }),
+  }),
+  async (req, res) => {
+    res.status(201).json({ department: await staffService.createDepartment(actor(req, res), res.locals.valid.body) });
+  },
+);
+
+staffRouter.patch(
+  '/departments/:id',
+  requirePermission('departments:manage'),
+  validate({
+    params: idParams,
+    body: z.object({ name: z.string().trim().min(2).max(80).optional(), kind: deptKind.optional(), isActive: z.boolean().optional() }),
+  }),
+  async (req, res) => {
+    res.json({ department: await staffService.updateDepartment(actor(req, res), res.locals.valid.params.id, res.locals.valid.body) });
+  },
+);
+
+/* ---------------- Doctor profiles (department, specialty, fee, default slot length) ---------------- */
+
+staffRouter.get('/doctors', requirePermission('schedules:manage'), async (_req, res) => {
+  res.json({ doctors: await staffService.listDoctors({ includeInactive: true }) });
+});
+
+staffRouter.patch(
+  '/doctors/:id',
+  requirePermission('schedules:manage', 'fees:manage'),
+  validate({
+    params: idParams,
+    body: z.object({
+      departmentId: z.string().uuid('Choose a department').optional(),
+      specialty: z.string().trim().max(80).nullable().optional(),
+      consultationFeePaise: z.number().int('Fee must be whole paise').min(0).max(10_000_000).optional(),
+      slotMinutes: z.number().int().min(5).max(120).optional(),
+    }),
+  }),
+  async (req, res) => {
+    res.json({ doctor: await staffService.updateDoctorProfile(actor(req, res), res.locals.valid.params.id, res.locals.valid.body) });
+  },
+);

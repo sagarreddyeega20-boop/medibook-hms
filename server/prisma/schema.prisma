@@ -459,6 +459,7 @@ model DoctorLeave {
 
 model Appointment {
   id             String            @id @default(uuid()) @db.Uuid
+  ref            String            @unique // human booking reference, e.g. APT-000123 ("cancel APT-000123")
   patientId      String            @map("patient_id") @db.Uuid
   doctorId       String            @map("doctor_id") @db.Uuid
   departmentId   String            @map("department_id") @db.Uuid

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { api, UNAUTHORIZED_EVENT } from './api';
+import { disconnectLive } from './live';
 import { homeFor, type Role } from './roles';
 
 export interface SessionUser {
@@ -59,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     await api('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
+    disconnectLive();
     setEndedReason(null);
     setUser(null);
   }, []);

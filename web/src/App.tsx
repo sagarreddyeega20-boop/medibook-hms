@@ -1,5 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 import { AuditLog } from './pages/admin/AuditLog';
+import { Departments } from './pages/admin/Departments';
+import { Doctors } from './pages/admin/Doctors';
 import { StaffRoles } from './pages/admin/StaffRoles';
 import { Login } from './pages/auth/Login';
 import { Register } from './pages/auth/Register';
@@ -12,7 +14,11 @@ import { PaymentDemo } from './pages/demo/PaymentDemo';
 import { StaffDashboardDemo } from './pages/demo/StaffDashboardDemo';
 import { Home } from './pages/Home';
 import { NotFound } from './pages/NotFound';
+import { FindDoctor } from './pages/patient/FindDoctor';
+import { MyAppointments } from './pages/patient/MyAppointments';
 import { PatientHome } from './pages/patient/PatientHome';
+import { Patients } from './pages/reception/Patients';
+import { ReceptionBoard } from './pages/reception/ReceptionBoard';
 import { RoleHome } from './pages/staff/RoleHome';
 import { RequireAuth, RootRedirect } from './lib/auth';
 import type { Role } from './lib/roles';
@@ -34,13 +40,18 @@ export function App() {
       <Route path="/admin" element={guard(ADMINS, <RoleHome />)} />
       <Route path="/admin/staff" element={guard(ADMINS, <StaffRoles />)} />
       <Route path="/admin/audit" element={guard(ADMINS, <AuditLog />)} />
-      <Route path="/reception" element={guard(['RECEPTIONIST'], <RoleHome />)} />
+      <Route path="/admin/departments" element={guard(ADMINS, <Departments />)} />
+      <Route path="/admin/doctors" element={guard(ADMINS, <Doctors />)} />
+      <Route path="/reception" element={guard(['RECEPTIONIST'], <ReceptionBoard />)} />
+      <Route path="/reception/patients" element={guard(['RECEPTIONIST'], <Patients />)} />
       <Route path="/doctor" element={guard(['DOCTOR'], <RoleHome />)} />
       <Route path="/lab" element={guard(['LAB_TECH'], <RoleHome />)} />
       <Route path="/radiology" element={guard(['RADIOLOGY_TECH'], <RoleHome />)} />
       <Route path="/pharmacy" element={guard(['PHARMACIST'], <RoleHome />)} />
       <Route path="/accounts" element={guard(['ACCOUNTS'], <RoleHome />)} />
       <Route path="/patient" element={guard(['PATIENT'], <PatientHome />)} />
+      <Route path="/patient/doctors" element={guard(['PATIENT'], <FindDoctor />)} />
+      <Route path="/patient/appointments" element={guard(['PATIENT'], <MyAppointments />)} />
 
       {/* Developer reference: foundation overview + v1 pattern demos */}
       <Route path="/demo" element={<Home />} />

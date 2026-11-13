@@ -1,8 +1,11 @@
-import type { Prisma, RoleCode } from '@prisma/client';
+import type { DepartmentKind, Prisma, RoleCode } from '@prisma/client';
+import { emitScheduleChanged } from '../../lib/socket.js';
+import { localDateKey } from '../../lib/time.js';
 import { AppError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { nextSequence } from '../../lib/sequence.js';
 import { AuditAction, auditService } from '../audit/audit.service.js';
+import { billingService } from '../billing/billing.service.js';
 import { authService } from '../auth/auth.service.js';
 import { PRIVILEGED_ROLES, STAFF_ID_CODES, type StaffRole } from '../auth/permissions.js';
 import type { SessionData } from '../auth/session.service.js';
@@ -41,6 +44,23 @@ function assertCanManage(actor: Actor, targetRole: RoleCode | null, newRole?: Ro
   if (privileged && !can(actor, 'staff:create_admin')) throw AppError.forbidden('Only a Super Admin can create or change Admin accounts');
 }
 
+const doctorSelect = {
+  id: true, userId: true, staffCode: true, fullName: true, specialty: true, slotMinutes: true, isActive: true,
+  department: { select: { id: true, code: true, name: true } },
+} satisfies Prisma.StaffSelect;
+
+type DoctorRow = Prisma.StaffGetPayload<{ select: typeof doctorSelect }>;
+
+async function withFees(rows: DoctorRow[]) {
+  const fees = await billingService.consultationFees(rows.map((r) => ({ staffCode: r.staffCode, departmentCode: r.department?.code ?? null })));
+  return rows.map((r) => {
+    const fee = fees.get(r.staffCode);
+    return { ...r, consultationFeePaise: fee?.pricePaise ?? null, feeSource: fee?.source ?? null };
+  });
+}
+
+export type Doctor = Awaited<ReturnType<typeof withFees>>[number];
+
 const staffSelect = {
   id: true, userId: true, staffCode: true, fullName: true, isActive: true, createdAt: true,
   department: { select: { id: true, code: true, name: true } },
@@ -62,6 +82,106 @@ export const staffService = {
 
   departments() {
     return prisma.department.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, code: true, name: true, kind: true } });
+  },
+
+  /* ---------------- Departments (admin) ---------------- */
+
+  /** Every department, active or not, with staff and doctor counts. */
+  async allDepartments() {
+    const rows = await prisma.department.findMany({
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+      select: { id: true, code: true, name: true, kind: true, isActive: true, createdAt: true, _count: { select: { staff: { where: { isActive: true } } } } },
+    });
+    const doctorUserIds = await authService.userIdsWithRole('DOCTOR');
+    const doctors = await prisma.staff.groupBy({ by: ['departmentId'], where: { isActive: true, userId: { in: doctorUserIds } }, _count: true });
+    const docCount = new Map(doctors.map((d) => [d.departmentId, d._count]));
+    return rows.map(({ _count, ...d }) => ({ ...d, staffCount: _count.staff, doctorCount: docCount.get(d.id) ?? 0 }));
+  },
+
+  async departmentById(id: string) {
+    const d = await prisma.department.findUnique({ where: { id }, select: { id: true, code: true, name: true, kind: true, isActive: true } });
+    if (!d) throw AppError.notFound('Department not found');
+    return d;
+  },
+
+  async createDepartment(actor: Actor, input: { code: string; name: string; kind: DepartmentKind }) {
+    const code = input.code.trim().toUpperCase();
+    if (await prisma.department.findUnique({ where: { code } })) throw AppError.conflict(`Department code ${code} is already used`);
+    return prisma.$transaction(async (tx) => {
+      const d = await tx.department.create({ data: { code, name: input.name.trim(), kind: input.kind }, select: { id: true, code: true, name: true, kind: true, isActive: true } });
+      await auditService.record({ actorId: actor.session.userId, action: AuditAction.DEPARTMENT_CREATED, entity: 'departments', entityId: d.id, ip: actor.ip, metadata: { code, name: d.name, kind: d.kind } }, tx);
+      return d;
+    });
+  },
+
+  async updateDepartment(actor: Actor, id: string, input: { name?: string; kind?: DepartmentKind; isActive?: boolean }) {
+    const before = await this.departmentById(id);
+    if (input.isActive === false && before.isActive) {
+      const active = await prisma.staff.count({ where: { departmentId: id, isActive: true } });
+      if (active) throw AppError.conflict(`Move the ${active} active staff member${active === 1 ? '' : 's'} out of ${before.name} before deactivating it`);
+    }
+    return prisma.$transaction(async (tx) => {
+      const d = await tx.department.update({ where: { id }, data: { name: input.name?.trim(), kind: input.kind, isActive: input.isActive }, select: { id: true, code: true, name: true, kind: true, isActive: true } });
+      await auditService.record({ actorId: actor.session.userId, action: AuditAction.DEPARTMENT_UPDATED, entity: 'departments', entityId: id, ip: actor.ip, metadata: { before, after: d } }, tx);
+      return d;
+    });
+  },
+
+  /* ---------------- Doctor profiles ---------------- */
+
+  /** Doctors (optionally one department), with their consultation fee from the service catalogue. */
+  async listDoctors(opts: { departmentId?: string; includeInactive?: boolean } = {}) {
+    const userIds = await authService.userIdsWithRole('DOCTOR');
+    const rows = await prisma.staff.findMany({
+      where: { userId: { in: userIds }, departmentId: opts.departmentId, ...(opts.includeInactive ? {} : { isActive: true }) },
+      orderBy: { fullName: 'asc' },
+      select: doctorSelect,
+    });
+    return withFees(rows);
+  },
+
+  async doctorById(id: string) {
+    const row = await prisma.staff.findUnique({ where: { id }, select: doctorSelect });
+    if (!row) throw AppError.notFound('Doctor not found');
+    const role = (await authService.accountSummaries([row.userId])).get(row.userId)?.role;
+    if (role !== 'DOCTOR') throw AppError.notFound('Doctor not found');
+    return (await withFees([row]))[0]!;
+  },
+
+  async doctorsByIds(ids: string[]) {
+    const rows = await prisma.staff.findMany({ where: { id: { in: ids } }, select: doctorSelect });
+    return new Map((await withFees(rows)).map((d) => [d.id, d]));
+  },
+
+  async updateDoctorProfile(actor: Actor, id: string, input: { departmentId?: string; specialty?: string | null; consultationFeePaise?: number; slotMinutes?: number }) {
+    const before = await this.doctorById(id);
+    let dept = before.department;
+    if (input.departmentId && input.departmentId !== before.department?.id) {
+      const d = await prisma.department.findFirst({ where: { id: input.departmentId, isActive: true, kind: 'CLINICAL' }, select: { id: true, code: true, name: true } });
+      if (!d) throw AppError.badRequest('Choose an active clinical department');
+      dept = d;
+    }
+    if (!dept) throw AppError.badRequest('Choose a department for this doctor');
+    const deptId = dept.id;
+    await prisma.$transaction(async (tx) => {
+      await tx.staff.update({
+        where: { id },
+        data: { departmentId: deptId, specialty: input.specialty === undefined ? undefined : input.specialty?.trim() || null, slotMinutes: input.slotMinutes },
+      });
+      if (input.consultationFeePaise !== undefined || deptId !== before.department?.id) {
+        const pricePaise = input.consultationFeePaise ?? (before.feeSource === 'DOCTOR' ? before.consultationFeePaise : null);
+        if (pricePaise !== null) await billingService.setConsultationFee({ staffCode: before.staffCode, doctorName: before.fullName, departmentId: deptId, pricePaise }, tx);
+      }
+      await auditService.record(
+        {
+          actorId: actor.session.userId, action: AuditAction.DOCTOR_PROFILE_UPDATED, entity: 'staff', entityId: id, ip: actor.ip,
+          metadata: { staffCode: before.staffCode, department: dept!.code, specialty: input.specialty, consultationFeePaise: input.consultationFeePaise, slotMinutes: input.slotMinutes },
+        },
+        tx,
+      );
+    });
+    emitScheduleChanged({ doctorId: id, date: localDateKey(), kind: 'profile' });
+    return this.doctorById(id);
   },
 
   async list() {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  AppShell, AvailabilityChips, Badge, Button, Card, DashGrid, NowConsultingCard, PersonCell, StatCard, StatGrid, Table, Textarea,
+  AppShell, AvailabilityChips, DoctorBoardCard, SlotGrid, SlotLegend, Badge, Button, Card, DashGrid, NowConsultingCard, PersonCell, StatCard, StatGrid, Table, Textarea,
   type Column, type DayAvailability,
 } from '../../components';
 import { greeting } from '../../lib/format';
@@ -91,6 +91,29 @@ export function StaffDashboardDemo() {
           </>
         }
       />
+
+      <Card title="Reception live board patterns" subtitle="DoctorBoardCard + SlotGrid + SlotLegend (used on /reception)">
+        <div className="stack">
+          <div className="mb-boardgrid">
+            <DoctorBoardCard name="Dr. Ananya Iyer" meta="Cardiology · Interventional" status="IN_CONSULTATION" token="T4" current="Priya S." queueCount={3} nextFree="Today · 4:15 PM" selected />
+            <DoctorBoardCard name="Dr. Vikram Nair" meta="General Medicine" status="RUNNING_LATE" statusNote="Queue 22 min behind schedule" token="T9" queueCount={6} nextFree="Tomorrow · 8:00 AM" />
+            <DoctorBoardCard name="Dr. Rhea Kapoor" meta="Dermatology" status="ON_LEAVE" statusNote="On leave: Conference" queueCount={0} />
+          </div>
+          <SlotGrid
+            label="Demo slots"
+            onPick={() => undefined}
+            slots={[
+              { id: '1', time: '10:00 AM', state: 'DONE', sub: 'T1 · Priya S.' },
+              { id: '2', time: '10:15 AM', state: 'CHECKED_IN', sub: 'T2 · Rahul K.' },
+              { id: '3', time: '10:30 AM', state: 'BOOKED', sub: 'Lakshmi N.' },
+              { id: '4', time: '10:45 AM', state: 'HELD' },
+              { id: '5', time: '11:00 AM', state: 'CANCELLED' },
+              { id: '6', time: '11:15 AM', state: 'FREE', selected: true },
+            ]}
+          />
+          <SlotLegend />
+        </div>
+      </Card>
     </AppShell>
   );
 }

@@ -23,4 +23,5 @@ export { AvailabilityChips, NowConsultingCard, StatCard, StatGrid, type DayAvail
 export { AppointmentCard, DateTile, HeroBanner, PersonList, Pill, SideCard } from './PatientCards';
 export { ChatAppointment, ChatBlock, ChatMessage, ChatPanel, ConfirmationCard, DoctorSlotCard, QuickReplies, SlotChip, TypingIndicator } from './Chat';
 export { AuthCard, AuthNote, IdHighlight, OtpInput, Segmented, type SegmentOption } from './Auth';
+export { DoctorBoardCard, SLOT_STATE_LABELS, SlotGrid, SlotLegend, type SlotCell, type SlotGridState } from './Booking';
 export { OptionTiles, OrDivider, OrderSummary, PaymentMethodCard, SummaryRows, TrustNote } from './Payment';

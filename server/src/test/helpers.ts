@@ -124,3 +124,12 @@ export async function auditCount(action: string, where: { actorId?: string | nul
 }
 
 export type { RoleCode };
+
+/** A signed-in session without the OTP round-trip (for tests that are not about login). Returns the Cookie header value. */
+export async function sessionCookieFor(userId: string, kind: 'STAFF' | 'PATIENT' = 'STAFF') {
+  const { authService } = await import('../modules/auth/auth.service.js');
+  const { sessionService, SESSION_COOKIE } = await import('../modules/auth/session.service.js');
+  const access = await authService.loadAccess(userId);
+  const { token } = await sessionService.create({ userId, kind, role: access.role!, permissions: access.permissions, name: 'Test' });
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}`;
+}

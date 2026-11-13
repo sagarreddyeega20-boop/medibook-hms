@@ -4,10 +4,11 @@ import { env } from './config/env.js';
 import { prisma } from './lib/prisma.js';
 import { connectRedis, redis } from './lib/redis.js';
 import { initSocket } from './lib/socket.js';
+import { socketRooms } from './modules/auth/socket.js';
 
 const app = createApp();
 const server = createServer(app);
-initSocket(server);
+initSocket(server, socketRooms);
 
 connectRedis().catch((err) => console.error('[redis] initial connect failed:', err.message));
 

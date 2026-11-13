@@ -10,7 +10,7 @@ export type BadgeTone = 'primary' | 'success' | 'danger' | 'warning' | 'pending'
  */
 export const STATUS_TONES: Record<string, BadgeTone> = {
   // appointments / visits
-  HELD: 'pending', BOOKED: 'neutral', CONFIRMED: 'success', CHECKED_IN: 'info', IN_CONSULTATION: 'primary',
+  FREE: 'primary', DONE: 'success', HELD: 'pending', BOOKED: 'neutral', CONFIRMED: 'success', CHECKED_IN: 'info', IN_CONSULTATION: 'primary',
   OPEN: 'primary', COMPLETED: 'success', CANCELLED: 'warning', NO_SHOW: 'danger', AWAITING: 'warning',
   // orders
   ORDERED: 'info', SCHEDULED: 'neutral', IN_PROGRESS: 'warning', RESULT_READY: 'success',
@@ -25,6 +25,12 @@ export const STATUS_TONES: Record<string, BadgeTone> = {
   LOGIN_SUCCESS: 'success', LOGIN_FAILED: 'warning', ACCOUNT_LOCKED: 'danger', OTP_FAILED: 'warning', OTP_LOCKED: 'danger',
   LOGOUT: 'neutral', PASSWORD_SET: 'info', STAFF_CREATED: 'primary', STAFF_INVITE_SENT: 'info', ROLE_CHANGED: 'pending',
   STAFF_DEACTIVATED: 'neutral', PATIENT_REGISTERED: 'primary', ACCESS_DENIED: 'danger',
+  FAMILY_LINKED: 'info', DEPARTMENT_CREATED: 'primary', DEPARTMENT_UPDATED: 'pending', DOCTOR_PROFILE_UPDATED: 'pending',
+  SCHEDULE_UPDATED: 'pending', LEAVE_ADDED: 'warning', LEAVE_REMOVED: 'neutral',
+  APPOINTMENT_BOOKED: 'success', APPOINTMENT_CANCELLED: 'warning', APPOINTMENT_RESCHEDULED: 'pending',
+  WALK_IN_REGISTERED: 'primary', CONSULT_STARTED: 'primary', CONSULT_ENDED: 'success',
+  // visit types / booking source
+  OPD: 'info', WALK_IN: 'primary', ONLINE: 'info', RECEPTION: 'neutral', INACTIVE: 'neutral',
 };
 
 /** Labels that differ from the plain "Title case" of the status code. */
@@ -35,6 +41,10 @@ export const STATUS_LABELS: Record<string, string> = {
   INVITED: 'Invite sent',
   OTP_FAILED: 'OTP failed',
   OTP_LOCKED: 'OTP locked',
+  OPD: 'Appointment',
+  WALK_IN: 'Walk-in',
+  ONLINE: 'Booked online',
+  RECEPTION: 'Booked at reception',
 };
 
 export const statusLabel = (s: string) =>

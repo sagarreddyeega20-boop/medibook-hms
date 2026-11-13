@@ -13,7 +13,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const ROLE_HOME: Record<Role, { path: string; brandSub: string; title: string; api: string }> = {
   SUPER_ADMIN: { path: '/admin', brandSub: 'Administration', title: 'Admin console', api: '/api/staff/options' },
   ADMIN: { path: '/admin', brandSub: 'Administration', title: 'Admin console', api: '/api/staff/options' },
-  RECEPTIONIST: { path: '/reception', brandSub: 'Reception', title: 'Live board', api: '/api/reception/dashboard' },
+  RECEPTIONIST: { path: '/reception', brandSub: 'Reception', title: 'Live board', api: '/api/reception/board' },
   DOCTOR: { path: '/doctor', brandSub: 'for Doctors', title: 'My schedule', api: '/api/visits/dashboard' },
   LAB_TECH: { path: '/lab', brandSub: 'Laboratory', title: 'Lab queue', api: '/api/orders/lab/dashboard' },
   RADIOLOGY_TECH: { path: '/radiology', brandSub: 'Radiology', title: 'Radiology queue', api: '/api/orders/radiology/dashboard' },
@@ -39,8 +39,11 @@ interface MenuItem {
 const MENU: MenuItem[] = [
   { to: '/admin', label: 'Dashboard', icon: 'clinic', roles: ['SUPER_ADMIN', 'ADMIN'], end: true },
   { to: '/admin/staff', label: 'Staff & roles', icon: 'lock', roles: ['SUPER_ADMIN', 'ADMIN'], permission: 'staff:read' },
+  { to: '/admin/departments', label: 'Departments', icon: 'clinic', roles: ['SUPER_ADMIN', 'ADMIN'], permission: 'departments:manage' },
+  { to: '/admin/doctors', label: 'Doctors & schedules', icon: 'calendar', roles: ['SUPER_ADMIN', 'ADMIN'], permission: 'schedules:manage' },
   { to: '/admin/audit', label: 'Audit log', icon: 'search', roles: ['SUPER_ADMIN', 'ADMIN'], permission: 'audit:read' },
-  { to: '/reception', label: 'Live board', icon: 'calendar', roles: ['RECEPTIONIST'], permission: 'reception:read' },
+  { to: '/reception', label: 'Live board', icon: 'calendar', roles: ['RECEPTIONIST'], permission: 'reception:read', end: true },
+  { to: '/reception/patients', label: 'Patients', icon: 'search', roles: ['RECEPTIONIST'], permission: 'patients:register' },
   { to: '/doctor', label: 'My schedule', icon: 'calendar', roles: ['DOCTOR'], permission: 'schedule:own' },
   { to: '/lab', label: 'Lab queue', icon: 'bolt', roles: ['LAB_TECH'], permission: 'orders:lab' },
   { to: '/radiology', label: 'Radiology queue', icon: 'bolt', roles: ['RADIOLOGY_TECH'], permission: 'orders:radiology' },

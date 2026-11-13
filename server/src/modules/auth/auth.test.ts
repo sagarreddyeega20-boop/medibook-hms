@@ -30,7 +30,7 @@ afterAll(async () => {
 const ROLE_API: Record<StaffRole, string> = {
   SUPER_ADMIN: '/api/staff',
   ADMIN: '/api/audit',
-  RECEPTIONIST: '/api/reception/dashboard',
+  RECEPTIONIST: '/api/reception/board',
   DOCTOR: '/api/visits/dashboard',
   LAB_TECH: '/api/orders/lab/dashboard',
   RADIOLOGY_TECH: '/api/orders/radiology/dashboard',

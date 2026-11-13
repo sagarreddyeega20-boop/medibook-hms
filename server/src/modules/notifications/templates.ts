@@ -6,6 +6,20 @@ export interface TemplateData {
   otp: { name?: string; code: string; minutes: number; purpose: 'login' | 'registration' };
   'staff-invite': { name: string; staffCode: string; role: string; link: string; hours: number };
   'account-locked': { name: string; minutes: number };
+  'appointment-booked': AppointmentMail;
+  'appointment-cancelled': AppointmentMail;
+  'appointment-rescheduled': AppointmentMail;
+}
+
+export interface AppointmentMail {
+  name: string;
+  mrn: string;
+  ref: string;
+  doctor: string;
+  department: string;
+  when: string; // already formatted in hospital time
+  reason?: string;
+  previousWhen?: string;
 }
 
 export type TemplateName = keyof TemplateData;
@@ -45,4 +59,27 @@ export const emailTemplates: { [K in TemplateName]: (d: TemplateData[K]) => Rend
     text: `Hello ${d.name},\n\nYour account was locked for ${d.minutes} minutes after several wrong password attempts. If this wasn't you, tell your administrator.`,
     html: layout(`<p>Hello ${esc(d.name)},</p><p>Your account was locked for ${d.minutes} minutes after several wrong password attempts. If this wasn't you, tell your administrator.</p>`),
   }),
+  'appointment-booked': (d) => appointmentMail(d, 'Appointment confirmed', `Your appointment is confirmed.`),
+  'appointment-cancelled': (d) =>
+    appointmentMail(d, 'Appointment cancelled', `Your appointment has been cancelled${d.reason ? ` (reason: ${d.reason})` : ''}. You can book a new time on MediBook or at reception.`),
+  'appointment-rescheduled': (d) =>
+    appointmentMail(d, 'Appointment rescheduled', `Your appointment${d.previousWhen ? ` on ${d.previousWhen}` : ''} has been moved to the new time below.`),
 };
+
+function appointmentMail(d: AppointmentMail, heading: string, intro: string): RenderedEmail {
+  const rows: [string, string][] = [
+    ['When', d.when],
+    ['Doctor', `${d.doctor}${d.department ? ` · ${d.department}` : ''}`],
+    ['Booking ref', d.ref],
+    ['Patient ID', d.mrn],
+  ];
+  return {
+    subject: `${heading}: ${d.ref} · ${d.when}`,
+    text: `Hello ${d.name},\n\n${intro}\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nPlease arrive 10 minutes early and show your Patient ID at reception.`,
+    html: layout(`<p>Hello ${esc(d.name)},</p><p>${esc(intro)}</p>
+<table style="border-collapse:collapse;font-size:14px;margin:12px 0">${rows
+      .map(([k, v]) => `<tr><td style="padding:4px 16px 4px 0;color:#64748B">${esc(k)}</td><td style="padding:4px 0;font-weight:700">${esc(v)}</td></tr>`)
+      .join('')}</table>
+<p style="font-size:13px;color:#64748B">Please arrive 10 minutes early and show your Patient ID at reception.</p>`),
+  };
+}

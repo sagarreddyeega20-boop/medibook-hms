@@ -147,6 +147,17 @@ export const authService = {
 
   revokeSessions: (userId: string) => sessionService.revokeUser(userId),
 
+  /** Active (not disabled) users holding `role` — e.g. every doctor for the reception board. */
+  async userIdsWithRole(role: RoleCode) {
+    const rows = await prisma.userRole.findMany({ where: { role: { code: role }, user: { status: { not: 'DISABLED' } } }, select: { userId: true } });
+    return rows.map((r) => r.userId);
+  },
+
+  async emailsByUserIds(userIds: string[]) {
+    const rows = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, email: true } });
+    return new Map(rows.map((r) => [r.id, r.email]));
+  },
+
   /** For the staff list: role, whether a password is set, lock state. */
   async accountSummaries(userIds: string[]) {
     const users = await prisma.user.findMany({
