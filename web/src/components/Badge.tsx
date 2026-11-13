@@ -36,6 +36,10 @@ export const STATUS_TONES: Record<string, BadgeTone> = {
   VISIT: 'neutral', NOTE: 'primary', LAB: 'info', RADIOLOGY: 'info', RESULT: 'success', REFERRAL: 'pending', PRESCRIPTION: 'primary', MEDICATION: 'primary',
   ROUTINE: 'neutral', URGENT: 'warning', STAT: 'danger', ABNORMAL: 'danger', DISPENSED: 'success', PARTIALLY_DISPENSED: 'pending',
   TO_BOOK: 'warning',
+  // pharmacy stock
+  IN_STOCK: 'success', LOW_STOCK: 'warning', OUT_OF_STOCK: 'danger', PURCHASE: 'success', DISPENSE: 'info', ADJUSTMENT: 'neutral', RETURN: 'neutral',
+  // department-queue audit events
+  ORDER_STARTED: 'warning', RESULT_UPLOADED: 'success', MEDICINE_DISPENSED: 'success', MEDICINE_CREATED: 'primary', MEDICINE_UPDATED: 'pending', STOCK_IN: 'success',
   // visit types / booking source
   OPD: 'info', WALK_IN: 'primary', ONLINE: 'info', RECEPTION: 'neutral', INACTIVE: 'neutral',
 };
@@ -60,6 +64,9 @@ export const STATUS_LABELS: Record<string, string> = {
   NOTE: 'Note',
   TO_BOOK: 'To book',
   STAT: 'STAT',
+  PURCHASE: 'Stock in',
+  DISPENSE: 'Dispensed',
+  ORDER_STARTED: 'Sample / scan taken',
 };
 
 export const statusLabel = (s: string) =>

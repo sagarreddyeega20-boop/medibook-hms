@@ -36,6 +36,9 @@ const EnvSchema = z.object({
   OTP_MAX_PER_HOUR: z.coerce.number().int().default(5),
   SLOT_HOLD_SECONDS: z.coerce.number().int().default(600),
 
+  /** Result attachments (relative to /server). Never served statically. */
+  UPLOAD_DIR: z.string().default('uploads'),
+
   SMTP_HOST: z.string().optional().default(''),
   SMTP_PORT: z.coerce.number().int().default(587),
   SMTP_SECURE: bool.default(false),

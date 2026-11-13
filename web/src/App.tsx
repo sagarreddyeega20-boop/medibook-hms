@@ -20,6 +20,10 @@ import { NotFound } from './pages/NotFound';
 import { FindDoctor } from './pages/patient/FindDoctor';
 import { MyAppointments } from './pages/patient/MyAppointments';
 import { PatientHome } from './pages/patient/PatientHome';
+import { Dispense } from './pages/pharmacy/Dispense';
+import { PharmacyHome } from './pages/pharmacy/PharmacyHome';
+import { PharmacyStock } from './pages/pharmacy/PharmacyStock';
+import { OrderQueue } from './pages/queues/OrderQueue';
 import { Patients } from './pages/reception/Patients';
 import { ReceptionBoard } from './pages/reception/ReceptionBoard';
 import { RoleHome } from './pages/staff/RoleHome';
@@ -39,7 +43,7 @@ export function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/set-password" element={<SetPassword />} />
 
-      {/* Each role's home (placeholder dashboards until their modules are built) */}
+      {/* Each role's home (RoleHome = placeholder until that role's module is built) */}
       <Route path="/admin" element={guard(ADMINS, <RoleHome />)} />
       <Route path="/admin/staff" element={guard(ADMINS, <StaffRoles />)} />
       <Route path="/admin/audit" element={guard(ADMINS, <AuditLog />)} />
@@ -50,9 +54,11 @@ export function App() {
       <Route path="/doctor" element={guard(['DOCTOR'], <DoctorHome />)} />
       <Route path="/doctor/visits/:visitId" element={guard(['DOCTOR'], <Consultation />)} />
       <Route path="/doctor/patients/:patientId" element={guard(['DOCTOR'], <PatientRecord />)} />
-      <Route path="/lab" element={guard(['LAB_TECH'], <RoleHome />)} />
-      <Route path="/radiology" element={guard(['RADIOLOGY_TECH'], <RoleHome />)} />
-      <Route path="/pharmacy" element={guard(['PHARMACIST'], <RoleHome />)} />
+      <Route path="/lab" element={guard(['LAB_TECH'], <OrderQueue key="LAB" type="LAB" />)} />
+      <Route path="/radiology" element={guard(['RADIOLOGY_TECH'], <OrderQueue key="RADIOLOGY" type="RADIOLOGY" />)} />
+      <Route path="/pharmacy" element={guard(['PHARMACIST'], <PharmacyHome />)} />
+      <Route path="/pharmacy/dispense/:id" element={guard(['PHARMACIST'], <Dispense />)} />
+      <Route path="/pharmacy/stock" element={guard(['PHARMACIST'], <PharmacyStock />)} />
       <Route path="/accounts" element={guard(['ACCOUNTS'], <RoleHome />)} />
       <Route path="/patient" element={guard(['PATIENT'], <PatientHome />)} />
       <Route path="/patient/doctors" element={guard(['PATIENT'], <FindDoctor />)} />

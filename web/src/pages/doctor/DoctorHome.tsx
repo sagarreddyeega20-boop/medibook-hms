@@ -34,6 +34,41 @@ interface Dashboard {
 }
 interface Found { id: string; name: string; mrn: string; gender: string; dateOfBirth: string | null; phone: string | null }
 
+interface Alert { id: string; subject: string | null; body: string; readAt: string | null; createdAt: string; data: { kind?: string; patientId?: string; abnormal?: boolean } | null }
+
+/** In-app alerts from lab / radiology: a result for a test you ordered is ready (arrives live). */
+function ResultsCard() {
+  const navigate = useNavigate();
+  const [alerts, setAlerts] = useState<Alert[] | null>(null);
+  const load = useCallback(
+    () => api<{ items: Alert[] }>('/api/notifications').then((r) => setAlerts(r.items.filter((a) => a.data?.kind === 'RESULT_READY'))).catch(() => setAlerts([])),
+    [],
+  );
+  useEffect(() => void load(), [load]);
+  useLive(['notification'], () => void load());
+  const open = async (a: Alert) => {
+    if (!a.readAt) await api(`/api/notifications/${a.id}/read`, { method: 'POST' }).catch(() => undefined);
+    if (a.data?.patientId) navigate(`/doctor/patients/${a.data.patientId}`);
+  };
+  const unread = alerts?.filter((a) => !a.readAt).length ?? 0;
+  return (
+    <Card title="Results ready" subtitle="Tests and scans you ordered." actions={unread ? <Badge tone="danger" dot size="sm">{unread} new</Badge> : undefined}>
+      {alerts?.length ? (
+        <PersonList
+          items={alerts.slice(0, 6).map((a) => ({
+            key: a.id,
+            name: <>{a.data?.abnormal ? <Badge status="ABNORMAL" size="sm" /> : !a.readAt && <Badge status="RESULT_READY" size="sm">New</Badge>} {a.subject?.replace(/^(Abnormal result|Result ready): /, '')}</>,
+            sub: `${whenLabel(a.createdAt)} · ${a.body}`,
+            action: <Button variant="link" onClick={() => void open(a)}>Timeline</Button>,
+          }))}
+        />
+      ) : (
+        <p className="muted">{alerts ? 'No results yet.' : 'Loading…'}</p>
+      )}
+    </Card>
+  );
+}
+
 /** DOCTOR home: v1 doctor dashboard — today's queue with Start consult / Mark done, stats, now consulting, referrals. */
 export function DoctorHome() {
   const { user } = useAuth();
@@ -166,6 +201,7 @@ export function DoctorHome() {
                 </div>
               )}
             </NowConsultingCard>
+            <ResultsCard />
             <Card title="Referrals to you" subtitle="Patients other doctors referred to you.">
               {data?.referrals.length ? (
                 <PersonList

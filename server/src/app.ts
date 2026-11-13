@@ -21,6 +21,9 @@ export function createApp(): Express {
   app.set('trust proxy', 1);
   app.use(helmet());
   app.use(cors({ origin: corsOrigins, credentials: true }));
+  // Result uploads carry a base64 PDF/image (≤ 5 MB file); every other body stays at 1 MB.
+  const uploadJson = express.json({ limit: '8mb' });
+  app.use((req, res, next) => (req.method === 'POST' && /^\/api\/orders\/[^/]+\/result$/.test(req.path) ? uploadJson(req, res, next) : next()));
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/api/health', async (_req, res) => {

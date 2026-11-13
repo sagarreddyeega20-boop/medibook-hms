@@ -1,11 +1,16 @@
-import type { OrderPriority, OrderStatus, OrderType, Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import type { OrderPriority, OrderStatus, OrderType, PrescriptionStatus, Prisma } from '@prisma/client';
 import { AppError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { nextSequence } from '../../lib/sequence.js';
 import { emitTo, Rooms } from '../../lib/socket.js';
+import { localDateKey, localDayRange } from '../../lib/time.js';
+import { decodeUpload, removeUpload, saveUpload } from '../../lib/uploads.js';
 import { AuditAction, auditService } from '../audit/audit.service.js';
 import type { SessionData } from '../auth/session.service.js';
 import { billingService } from '../billing/billing.service.js';
+import { notificationsService } from '../notifications/notifications.service.js';
+import { patientsService } from '../patients/patients.service.js';
 import { pharmacyService } from '../pharmacy/pharmacy.service.js';
 import { staffService } from '../staff/staff.service.js';
 import { EDITABLE_VISIT, visitsService } from '../visits/visits.service.js';
@@ -94,6 +99,70 @@ export function dosesPerDay(frequency: string | null | undefined): number {
   const named: Record<string, number> = { OD: 1, QD: 1, HS: 1, BD: 2, BID: 2, TDS: 3, TID: 3, QID: 4, QDS: 4 };
   return named[f] ?? 1;
 }
+
+/* ---------------- Department queue helpers ---------------- */
+
+export type QueueType = 'LAB' | 'RADIOLOGY';
+const ACTIVE_QUEUE: OrderStatus[] = ['ORDERED', 'SCHEDULED', 'IN_PROGRESS'];
+export const RESULTS_FOLDER = 'results';
+export const resultFileUrl = (resultId: string) => `/api/orders/results/${resultId}/file`;
+
+/** The permission that opens each queue. */
+export const QUEUE_PERMISSION = { LAB: 'orders:lab', RADIOLOGY: 'orders:radiology' } as const;
+
+const queueSelect = {
+  id: true, orderNumber: true, type: true, status: true, priority: true, title: true, patientId: true, orderingDoctorId: true,
+  createdAt: true, startedAt: true, resultReadyAt: true,
+  targetDepartment: { select: { id: true, code: true, name: true } },
+  results: { orderBy: { reportedAt: 'desc' }, take: 1, select: { id: true, summary: true, isAbnormal: true, fileUrl: true, reportedAt: true, reportedById: true } },
+} satisfies Prisma.OrderSelect;
+
+/** Departments whose queue of `type` this technician works. */
+async function queueDepartments(actor: Actor, type: QueueType) {
+  const mine = await staffService.departmentOfUser(actor.session.userId);
+  if (!mine) throw AppError.forbidden('Only active staff have a department queue');
+  if (mine.department?.kind === type) return [mine.department];
+  return staffService.departmentsOfKind(type);
+}
+
+async function techOf(actor: Actor) {
+  const me = await staffService.profileByUserId(actor.session.userId);
+  if (!me || !me.isActive) throw AppError.forbidden('Only active staff can work the queue');
+  return me;
+}
+
+/** A LAB/RADIOLOGY order the technician's role may work (type matches their queue permission and department). */
+async function queueOrder(actor: Actor, orderId: string) {
+  const o = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, orderNumber: true, type: true, status: true, title: true, visitId: true, patientId: true, orderingDoctorId: true, targetDepartmentId: true, catalogueItemId: true },
+  });
+  if (!o || (o.type !== 'LAB' && o.type !== 'RADIOLOGY')) throw AppError.notFound('Order not found');
+  if (!actor.session.permissions.includes(QUEUE_PERMISSION[o.type])) throw AppError.forbidden(`This is a ${o.type === 'LAB' ? 'lab' : 'radiology'} order`);
+  const depts = await queueDepartments(actor, o.type);
+  if (!depts.some((d) => d.id === o.targetDepartmentId)) throw AppError.forbidden('This order belongs to another department');
+  if (o.status === 'CANCELLED') throw new AppError(409, 'ORDER_CANCELLED', 'The doctor cancelled this order.');
+  return o;
+}
+
+/* ---------------- Prescriptions as the pharmacy sees them ---------------- */
+
+const rxSelect = {
+  id: true, visitId: true, patientId: true, doctorId: true, orderId: true, status: true, createdAt: true, updatedAt: true,
+  order: { select: { orderNumber: true, status: true } },
+  items: {
+    orderBy: { id: 'asc' },
+    select: { id: true, medicineId: true, medicineName: true, dose: true, frequency: true, durationDays: true, route: true, instructions: true, quantity: true, dispensedQuantity: true },
+  },
+} satisfies Prisma.PrescriptionSelect;
+
+/** No `notes`: the pharmacist sees what to dispense and how to take it, not the doctor's notes. */
+const presentRx = (r: Prisma.PrescriptionGetPayload<{ select: typeof rxSelect }>) => ({
+  id: r.id, visitId: r.visitId, patientId: r.patientId, doctorId: r.doctorId, status: r.status, createdAt: r.createdAt, updatedAt: r.updatedAt,
+  orderNumber: r.order?.orderNumber ?? null,
+  items: r.items,
+});
+export type PrescriptionView = ReturnType<typeof presentRx>;
 
 export const ordersService = {
   /* ---------------- Doctor: tests and scans ---------------- */
@@ -312,6 +381,206 @@ export const ordersService = {
   async openReferralPatientIds(doctorId: string) {
     const rows = await prisma.referral.findMany({ where: { toDoctorId: doctorId, order: { status: { in: ['SCHEDULED', 'IN_PROGRESS'] } } }, select: { patientId: true } });
     return new Set(rows.map((r) => r.patientId));
+  },
+
+  /* ---------------- Department queues: lab and radiology ---------------- */
+
+  /**
+   * The technician's queue: their department's orders of this type. A technician filed under another kind of department
+   * (e.g. a new hire still in Administration) sees every department of the matching kind.
+   * Rows carry what the bench needs — patient name + MRN, test, ordering doctor, urgency, status — and NO clinical notes
+   * (the doctor's indication stays on the doctor's side).
+   */
+  async queue(actor: Actor, type: QueueType) {
+    const depts = await queueDepartments(actor, type);
+    const deptIds = depts.map((d) => d.id);
+    const { start } = localDayRange(localDateKey());
+    const rows = await prisma.order.findMany({
+      where: {
+        type, targetDepartmentId: { in: deptIds },
+        OR: [{ status: { in: ACTIVE_QUEUE } }, { status: 'RESULT_READY', resultReadyAt: { gte: start } }],
+      },
+      orderBy: [{ createdAt: 'asc' }],
+      select: queueSelect,
+    });
+    const [patients, doctors] = await Promise.all([
+      patientsService.headers(rows.map((r) => r.patientId)),
+      staffService.doctorsByIds([...new Set(rows.flatMap((r) => [r.orderingDoctorId, ...r.results.map((x) => x.reportedById)]))]),
+    ]);
+    const PRIORITY_RANK = { STAT: 0, URGENT: 1, ROUTINE: 2 } as const;
+    const items = rows
+      .map((r) => {
+        const p = patients.get(r.patientId);
+        const doc = doctors.get(r.orderingDoctorId);
+        return {
+          id: r.id, orderNumber: r.orderNumber, type: r.type, status: r.status, priority: r.priority, title: r.title,
+          createdAt: r.createdAt, startedAt: r.startedAt, resultReadyAt: r.resultReadyAt,
+          department: r.targetDepartment,
+          patient: p ? { id: p.id, name: p.name, mrn: p.mrn, gender: p.gender, age: p.age } : null,
+          orderingDoctor: { id: r.orderingDoctorId, name: doc?.fullName ?? 'Doctor', department: doc?.department?.name ?? null },
+          result: r.results[0] ? { id: r.results[0].id, summary: r.results[0].summary, isAbnormal: r.results[0].isAbnormal, fileUrl: r.results[0].fileUrl, reportedAt: r.results[0].reportedAt } : null,
+        };
+      })
+      .sort((a, b) => {
+        const done = Number(a.status === 'RESULT_READY') - Number(b.status === 'RESULT_READY');
+        if (done) return done;
+        if (a.status === 'RESULT_READY') return +b.resultReadyAt! - +a.resultReadyAt!;
+        return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || +a.createdAt - +b.createdAt;
+      });
+    const pending = items.filter((i) => i.status !== 'RESULT_READY');
+    return {
+      type,
+      departments: depts,
+      stats: {
+        toCollect: pending.filter((i) => i.status === 'ORDERED' || i.status === 'SCHEDULED').length,
+        inProgress: pending.filter((i) => i.status === 'IN_PROGRESS').length,
+        urgent: pending.filter((i) => i.priority !== 'ROUTINE').length,
+        readyToday: items.length - pending.length,
+      },
+      items,
+    };
+  },
+
+  /** "Sample collected" (lab) / "Scan done" (radiology): ORDERED|SCHEDULED → IN_PROGRESS, assigned to the technician. */
+  async markInProgress(actor: Actor, orderId: string) {
+    const o = await queueOrder(actor, orderId);
+    const tech = await techOf(actor);
+    await prisma.$transaction(async (tx) => {
+      const r = await tx.order.updateMany({ where: { id: o.id, status: { in: ['ORDERED', 'SCHEDULED'] } }, data: { status: 'IN_PROGRESS', startedAt: new Date(), assignedToId: tech.id } });
+      if (!r.count) throw new AppError(409, 'ORDER_NOT_WAITING', 'This order is no longer waiting — refresh the queue.');
+      await auditService.record(
+        { actorId: actor.session.userId, action: AuditAction.ORDER_STARTED, entity: 'orders', entityId: o.id, patientId: o.patientId, ip: actor.ip ?? null, metadata: { orderNumber: o.orderNumber, type: o.type } },
+        tx,
+      );
+    });
+    emitTo(Rooms.department(o.targetDepartmentId), 'orders:changed', { type: o.type, orderId: o.id });
+    return this.queueItem(o.id);
+  },
+
+  /**
+   * Upload the result: text findings + optional PDF/image. IN_PROGRESS → RESULT_READY in one transaction with the
+   * order_results row and the charge (price and department from the catalogue). Then the ordering doctor gets an in-app alert.
+   */
+  async uploadResult(actor: Actor, orderId: string, input: { summary: string; isAbnormal: boolean; file?: { base64: string } | null }) {
+    const o = await queueOrder(actor, orderId);
+    const tech = await techOf(actor);
+    if (o.status !== 'IN_PROGRESS') {
+      throw new AppError(409, 'ORDER_NOT_IN_PROGRESS', o.status === 'RESULT_READY' ? 'A result has already been uploaded for this order.' : `Mark the ${o.type === 'LAB' ? 'sample collected' : 'scan done'} first.`);
+    }
+    if (!o.catalogueItemId) throw new AppError(409, 'NO_CATALOGUE_ITEM', 'This order has no price in the service catalogue.');
+    const file = input.file ? decodeUpload(input.file.base64) : null;
+    const resultId = randomUUID();
+    const stored = file ? await saveUpload(RESULTS_FOLDER, resultId, file) : null;
+    const now = new Date();
+    try {
+      await prisma.$transaction(async (tx) => {
+        const r = await tx.order.updateMany({ where: { id: o.id, status: 'IN_PROGRESS' }, data: { status: 'RESULT_READY', completedAt: now, resultReadyAt: now, assignedToId: tech.id } });
+        if (!r.count) throw new AppError(409, 'ORDER_NOT_IN_PROGRESS', 'A result has already been uploaded for this order.');
+        await tx.orderResult.create({
+          data: { id: resultId, orderId: o.id, reportedById: tech.id, summary: input.summary.trim(), isAbnormal: input.isAbnormal, fileUrl: file ? resultFileUrl(resultId) : null, reportedAt: now },
+        });
+        const charge = await billingService.addOrderCharge({ visitId: o.visitId, orderId: o.id, catalogueItemId: o.catalogueItemId!, createdById: tech.id }, tx);
+        await auditService.record(
+          { actorId: actor.session.userId, action: AuditAction.RESULT_UPLOADED, entity: 'order_results', entityId: resultId, patientId: o.patientId, ip: actor.ip ?? null, metadata: { orderNumber: o.orderNumber, type: o.type, abnormal: input.isAbnormal, file: file ? file.mimeType : null } },
+          tx,
+        );
+        await auditService.record(
+          { actorId: actor.session.userId, action: AuditAction.CHARGE_CREATED, entity: 'charges', entityId: charge.id, patientId: o.patientId, ip: actor.ip ?? null, metadata: { orderNumber: o.orderNumber, totalPaise: charge.totalPaise } },
+          tx,
+        );
+      });
+    } catch (err) {
+      if (stored) await removeUpload(stored);
+      throw err;
+    }
+
+    await this.notifyResultReady(o, input.isAbnormal);
+    emitTo(Rooms.department(o.targetDepartmentId), 'orders:changed', { type: o.type, orderId: o.id });
+    return this.queueItem(o.id);
+  },
+
+  /** In-app alert to the ordering doctor. Never fails the technician's upload. */
+  async notifyResultReady(o: { id: string; orderNumber: string; title: string; patientId: string; orderingDoctorId: string }, abnormal: boolean) {
+    try {
+      const [doctor, patient] = await Promise.all([staffService.doctorsByIds([o.orderingDoctorId]).then((m) => m.get(o.orderingDoctorId)), patientsService.getSummary(o.patientId)]);
+      if (!doctor) return;
+      await notificationsService.inApp(doctor.userId, {
+        subject: `${abnormal ? 'Abnormal result' : 'Result ready'}: ${o.title}`,
+        body: `${o.title} for ${patient.name} (${patient.mrn}) is on the timeline. Order ${o.orderNumber}.`,
+        data: { kind: 'RESULT_READY', orderId: o.id, patientId: o.patientId, abnormal },
+      });
+    } catch (err) {
+      console.error('[orders] result notification failed:', err instanceof Error ? err.message : err);
+    }
+  },
+
+  /** One queue row (after an action). */
+  async queueItem(orderId: string) {
+    const o = await this.get(orderId);
+    const p = (await patientsService.headers([o.patientId])).get(o.patientId);
+    return {
+      id: o.id, orderNumber: o.orderNumber, type: o.type, status: o.status, priority: o.priority, title: o.title,
+      patient: p ? { id: p.id, name: p.name, mrn: p.mrn } : null,
+      result: o.results[0] ? { id: o.results[0].id, summary: o.results[0].summary, isAbnormal: o.results[0].isAbnormal, fileUrl: o.results[0].fileUrl } : null,
+    };
+  },
+
+  /** Who may download a result file is decided by the route; this only finds the result and its order. */
+  async resultRef(resultId: string) {
+    const r = await prisma.orderResult.findUnique({ where: { id: resultId }, select: { id: true, fileUrl: true, order: { select: { id: true, type: true, patientId: true, targetDepartmentId: true, orderNumber: true } } } });
+    if (!r || !r.fileUrl) throw AppError.notFound('Report not found');
+    const { id: orderId, ...order } = r.order;
+    return { ...order, id: r.id, orderId };
+  },
+
+  /* ---------------- Pharmacy reads / writes (called by the pharmacy module) ---------------- */
+
+  /** Prescriptions waiting to be dispensed (ACTIVE or PARTIALLY_DISPENSED, order not cancelled). */
+  async prescriptionsToDispense() {
+    const rows = await prisma.prescription.findMany({
+      where: { status: { in: ['ACTIVE', 'PARTIALLY_DISPENSED'] }, OR: [{ orderId: null }, { order: { status: { not: 'CANCELLED' } } }] },
+      orderBy: { createdAt: 'asc' },
+      select: rxSelect,
+    });
+    return rows.map(presentRx);
+  },
+
+  async prescription(id: string) {
+    const row = await prisma.prescription.findUnique({ where: { id }, select: rxSelect });
+    if (!row) throw AppError.notFound('Prescription not found');
+    return presentRx(row);
+  },
+
+  /** Prescriptions fully dispensed since `since` (pharmacy stat). */
+  dispensedSince(since: Date) {
+    return prisma.prescription.count({ where: { status: 'DISPENSED', updatedAt: { gte: since } } });
+  },
+
+  /**
+   * Inside the dispense transaction: adds `quantity` to the item's dispensed count (never past what was prescribed),
+   * then rolls the prescription and its MEDICATION order forward. The prescription itself is never edited.
+   */
+  async recordDispensed(prescriptionId: string, itemId: string, quantity: number, tx: Prisma.TransactionClient) {
+    const n = await tx.$executeRaw`
+      UPDATE prescription_items SET dispensed_quantity = dispensed_quantity + ${quantity}
+      WHERE id = ${itemId}::uuid AND prescription_id = ${prescriptionId}::uuid AND dispensed_quantity + ${quantity} <= quantity`;
+    if (!n) throw new AppError(409, 'OVER_DISPENSE', 'That is more than is left to dispense on this prescription.');
+  },
+
+  /** After all items of one dispense: DISPENSED when every item is complete, else PARTIALLY_DISPENSED. */
+  async settlePrescription(prescriptionId: string, tx: Prisma.TransactionClient) {
+    const rx = await tx.prescription.findUniqueOrThrow({ where: { id: prescriptionId }, select: { orderId: true, items: { select: { quantity: true, dispensedQuantity: true } } } });
+    const full = rx.items.every((i) => i.dispensedQuantity >= i.quantity);
+    const status: PrescriptionStatus = full ? 'DISPENSED' : 'PARTIALLY_DISPENSED';
+    await tx.prescription.update({ where: { id: prescriptionId }, data: { status } });
+    if (rx.orderId) {
+      const now = new Date();
+      await tx.order.update({
+        where: { id: rx.orderId },
+        data: full ? { status: 'COMPLETED', completedAt: now } : { status: 'IN_PROGRESS', startedAt: now },
+      });
+    }
+    return status;
   },
 
   /** Referrals addressed to this doctor (doctor home side card). Names only — the reason opens with the record. */

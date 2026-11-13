@@ -1,4 +1,5 @@
 import { Rooms } from '../../lib/socket.js';
+import { staffService } from '../staff/staff.service.js';
 import { SESSION_COOKIE, sessionService } from './session.service.js';
 
 /**
@@ -16,5 +17,12 @@ export async function socketRooms(cookieHeader: string | undefined): Promise<str
   if (!session) return [];
   const rooms: string[] = [Rooms.slots, Rooms.user(session.userId)];
   if (session.permissions.includes('reception:read')) rooms.push(Rooms.reception);
+  // Department queues: lab / radiology technicians and pharmacists hear "orders:changed" for every department of their kind.
+  const kinds = [
+    session.permissions.includes('orders:lab') && 'LAB',
+    session.permissions.includes('orders:radiology') && 'RADIOLOGY',
+    session.permissions.includes('pharmacy:dispense') && 'PHARMACY',
+  ].filter((k): k is 'LAB' | 'RADIOLOGY' | 'PHARMACY' => !!k);
+  for (const kind of kinds) rooms.push(...(await staffService.departmentsOfKind(kind)).map((d) => Rooms.department(d.id)));
   return rooms;
 }

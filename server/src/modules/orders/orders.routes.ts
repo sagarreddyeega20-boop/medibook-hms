@@ -1,11 +1,16 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
+import { AppError } from '../../lib/errors.js';
+import { findUpload } from '../../lib/uploads.js';
 import { validate } from '../../lib/validate.js';
-import { clientIp, getSession, requireAuth, requirePermission } from '../auth/auth.middleware.js';
+import { AuditAction, auditService } from '../audit/audit.service.js';
+import { clientIp, getSession, requireAnyPermission, requireAuth, requirePermission } from '../auth/auth.middleware.js';
+import { careAccess } from '../auth/care-access.service.js';
 import { billingService } from '../billing/billing.service.js';
+import { patientsService } from '../patients/patients.service.js';
 import { pharmacyService } from '../pharmacy/pharmacy.service.js';
 import { staffService } from '../staff/staff.service.js';
-import { ordersService } from './orders.service.js';
+import { ordersService, QUEUE_PERMISSION, RESULTS_FOLDER, type QueueType } from './orders.service.js';
 
 /** HTTP routes for the orders module, mounted at /api/orders. Every route checks the user's role/permissions. */
 export const ordersRouter: Router = Router();
@@ -96,12 +101,69 @@ ordersRouter.post(
   },
 );
 
-/* ---------------- Department queues (built with the lab / radiology module) ---------------- */
+/* ---------------- Department queues: lab and radiology (no clinical notes on any of these) ---------------- */
 
-ordersRouter.get('/lab/dashboard', requirePermission('orders:lab'), (_req, res) => {
-  res.json({ module: 'orders', title: 'Lab queue', placeholder: true });
+ordersRouter.get('/lab/dashboard', requirePermission('orders:lab'), async (req, res) => {
+  res.json(await ordersService.queue(actor(req, res), 'LAB'));
 });
 
-ordersRouter.get('/radiology/dashboard', requirePermission('orders:radiology'), (_req, res) => {
-  res.json({ module: 'orders', title: 'Radiology queue', placeholder: true });
+ordersRouter.get('/radiology/dashboard', requirePermission('orders:radiology'), async (req, res) => {
+  res.json(await ordersService.queue(actor(req, res), 'RADIOLOGY'));
+});
+
+/** Sample collected / scan done → IN_PROGRESS. The service checks the order type matches the technician's queue. */
+ordersRouter.post('/:id/start', requireAnyPermission('orders:lab', 'orders:radiology'), validate({ params: z.object({ id: uuid }) }), async (req, res) => {
+  res.json({ order: await ordersService.markInProgress(actor(req, res), res.locals.valid.params.id) });
+});
+
+/** Upload the result: findings text + optional PDF/image (base64, ≤ 5 MB, type checked from the bytes) → RESULT_READY. */
+ordersRouter.post(
+  '/:id/result',
+  requirePermission('results:upload'),
+  requireAnyPermission('orders:lab', 'orders:radiology'),
+  validate({
+    params: z.object({ id: uuid }),
+    body: z.object({
+      summary: z.string().trim().min(3, 'Write the findings').max(4000),
+      isAbnormal: z.boolean().default(false),
+      file: z.object({ name: z.string().trim().max(200).optional(), base64: z.string().min(1).max(8_000_000) }).nullable().optional(),
+    }),
+  }),
+  async (req, res) => {
+    res.status(201).json({ order: await ordersService.uploadResult(actor(req, res), res.locals.valid.params.id, res.locals.valid.body) });
+  },
+);
+
+/**
+ * Result file, served only to authorised users — never as a static file:
+ *   - the technicians of that queue (orders:lab / orders:radiology),
+ *   - clinicians with a care relationship or break-glass (audited as a VIEW of order_results),
+ *   - the patient (or the family account holder) in the portal.
+ * Everyone else gets 403, and the refusal is audited.
+ */
+ordersRouter.get('/results/:resultId/file', validate({ params: z.object({ resultId: uuid }) }), async (req, res) => {
+  const a = actor(req, res);
+  const ref = await ordersService.resultRef(res.locals.valid.params.resultId);
+  const s = a.session;
+  let allowed = false;
+  if (s.kind === 'STAFF' && s.permissions.includes(QUEUE_PERMISSION[ref.type as QueueType] ?? '__none__')) allowed = true;
+  else if (s.kind === 'STAFF' && s.permissions.includes('clinical:read')) {
+    await careAccess.assertCanView(a, ref.patientId, { entity: 'order_results', entityId: ref.id, metadata: { orderNumber: ref.orderNumber, file: true } });
+    allowed = true;
+  } else if (s.kind === 'PATIENT' && s.permissions.includes('self:read')) {
+    allowed = (await patientsService.accessiblePatientIds(s.userId)).includes(ref.patientId);
+  }
+  if (!allowed) {
+    await auditService.recordSafe({ actorId: s.userId, action: AuditAction.ACCESS_DENIED, entity: 'order_results', entityId: ref.id, patientId: ref.patientId, ip: a.ip, metadata: { role: s.role, file: true } });
+    throw AppError.forbidden();
+  }
+  const file = await findUpload(RESULTS_FOLDER, ref.id);
+  if (!file) throw AppError.notFound('The report file is missing');
+  res.set({
+    'Content-Type': file.mimeType,
+    'Content-Disposition': `inline; filename="${ref.orderNumber}.${file.ext}"`,
+    'Cache-Control': 'private, no-store',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  res.sendFile(file.path);
 });

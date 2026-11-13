@@ -47,7 +47,8 @@ const MENU: MenuItem[] = [
   { to: '/doctor', label: 'Today’s schedule', icon: 'calendar', roles: ['DOCTOR'], permission: 'schedule:own', end: true },
   { to: '/lab', label: 'Lab queue', icon: 'bolt', roles: ['LAB_TECH'], permission: 'orders:lab' },
   { to: '/radiology', label: 'Radiology queue', icon: 'bolt', roles: ['RADIOLOGY_TECH'], permission: 'orders:radiology' },
-  { to: '/pharmacy', label: 'Prescriptions', icon: 'wallet', roles: ['PHARMACIST'], permission: 'pharmacy:dispense' },
+  { to: '/pharmacy', label: 'Prescriptions', icon: 'wallet', roles: ['PHARMACIST'], permission: 'pharmacy:dispense', end: true },
+  { to: '/pharmacy/stock', label: 'Stock', icon: 'clinic', roles: ['PHARMACIST'], permission: 'pharmacy:stock' },
   { to: '/accounts', label: 'Overview', icon: 'bank', roles: ['ACCOUNTS'], permission: 'accounts:read' },
 ];
 

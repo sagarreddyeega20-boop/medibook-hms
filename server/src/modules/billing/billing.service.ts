@@ -89,6 +89,47 @@ export const billingService = {
     });
   },
 
+  /**
+   * Charge for a completed lab test / radiology scan: price and department come from the catalogue item.
+   * Idempotent per order (a re-upload never bills twice).
+   */
+  async addOrderCharge(input: { visitId: string; orderId: string; catalogueItemId: string; createdById: string }, tx: Prisma.TransactionClient) {
+    const existing = await tx.charge.findFirst({ where: { orderId: input.orderId, status: { not: 'VOID' } }, select: { id: true, description: true, totalPaise: true, departmentId: true, status: true } });
+    if (existing) return existing;
+    const item = await tx.serviceCatalogue.findUnique({ where: { id: input.catalogueItemId }, select: { id: true, name: true, pricePaise: true, departmentId: true } });
+    if (!item) throw AppError.notFound('That test or scan is not in the service catalogue');
+    return tx.charge.create({
+      data: {
+        visitId: input.visitId, catalogueItemId: item.id, departmentId: item.departmentId, orderId: input.orderId, description: item.name,
+        quantity: 1, unitPricePaise: assertPaise(item.pricePaise), totalPaise: item.pricePaise, createdById: input.createdById,
+      },
+      select: { id: true, description: true, totalPaise: true, departmentId: true, status: true },
+    });
+  },
+
+  /** The catalogue item that bills a medicine (MEDICINE category, pharmacy department, selling price). Created or repriced here. */
+  async upsertMedicineItem(input: { code: string; name: string; departmentId: string; pricePaise: number }, tx: Prisma.TransactionClient = prisma) {
+    assertPaise(input.pricePaise);
+    const code = `MED-ITEM-${input.code}`;
+    const data = { name: input.name, category: 'MEDICINE' as const, departmentId: input.departmentId, pricePaise: input.pricePaise, isActive: true };
+    return tx.serviceCatalogue.upsert({ where: { code }, update: data, create: { code, ...data }, select: { id: true, departmentId: true } });
+  },
+
+  /** Charge for one dispensation, at the selling price on the day it was dispensed. */
+  async addDispensationCharge(
+    input: { visitId: string; dispensationId: string; catalogueItemId: string; departmentId: string; description: string; quantity: number; unitPricePaise: number; createdById: string },
+    tx: Prisma.TransactionClient,
+  ) {
+    assertPaise(input.unitPricePaise);
+    return tx.charge.create({
+      data: {
+        visitId: input.visitId, catalogueItemId: input.catalogueItemId, departmentId: input.departmentId, dispensationId: input.dispensationId,
+        description: input.description, quantity: input.quantity, unitPricePaise: input.unitPricePaise, totalPaise: input.unitPricePaise * input.quantity, createdById: input.createdById,
+      },
+      select: { id: true, totalPaise: true },
+    });
+  },
+
   /** Charges on a visit (consultation screen summary). */
   chargesForVisit(visitId: string) {
     return prisma.charge.findMany({

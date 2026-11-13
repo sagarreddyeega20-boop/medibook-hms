@@ -60,6 +60,10 @@
 }
 .mb-input::placeholder, .mb-textarea::placeholder { color: var(--placeholder); }
 .mb-textarea { height: auto; min-height: 96px; padding: var(--space-3); line-height: 1.5; resize: vertical; }
+/* Quantity box inside a table row (dispense screen). */
+.mb-input--qty { width: 84px; text-align: right; font-variant-numeric: tabular-nums; }
+/* File picker: same box, the browser's button sits inside it. */
+.mb-input[type='file'] { height: auto; padding: var(--space-2) var(--space-3); }
 .mb-input:focus, .mb-select:focus { outline: none; border-color: var(--primary); box-shadow: var(--focus-ring); }
 .mb-input:disabled, .mb-select:disabled { background: var(--neutral-soft); color: var(--muted); }
 .mb-field--invalid .mb-input, .mb-field--invalid .mb-select { border-color: var(--danger); }

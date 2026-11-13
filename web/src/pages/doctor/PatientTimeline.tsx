@@ -4,6 +4,8 @@ import { api, ApiRequestError, errorMessage } from '../../lib/api';
 import { timeLabel, whenLabel } from '../../lib/time';
 import { ACCESS_LABELS, patientMeta, showValue, TIMELINE_FILTERS, type PatientHeader, type TimelineEvent, type TimelineResponse } from './clinical';
 
+const REPORT_URL = /^\/api\/orders\/results\/[0-9a-f-]{36}\/file$/;
+
 /** Timeline events → Timeline component entries. */
 export function toEntries(events: TimelineEvent[], currentVisitId?: string): TimelineEntry[] {
   return events.map((e) => ({
@@ -13,7 +15,11 @@ export function toEntries(events: TimelineEvent[], currentVisitId?: string): Tim
     status: e.status,
     priority: e.priority,
     meta: [whenLabel(e.at), e.doctor, e.department].filter(Boolean).join(' · '),
-    lines: e.lines.map(([label, value]) => ({ label, value: showValue(value) })),
+    lines: e.lines.map(([label, value]) => ({
+      label,
+      // Result files are served by the API only to the care team (each open is audited).
+      value: REPORT_URL.test(value) ? <a className="mb-btn mb-btn--link" href={value} target="_blank" rel="noreferrer">Open report</a> : showValue(value),
+    })),
     current: !!currentVisitId && e.visitId === currentVisitId,
   }));
 }

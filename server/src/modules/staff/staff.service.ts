@@ -75,6 +75,17 @@ export const staffService = {
     return prisma.staff.findUnique({ where: { userId }, select: { id: true, userId: true, staffCode: true, fullName: true, isActive: true } });
   },
 
+  /** A staff member's department (decides which department queue a technician or pharmacist works). */
+  async departmentOfUser(userId: string) {
+    const s = await prisma.staff.findUnique({ where: { userId }, select: { id: true, isActive: true, department: { select: { id: true, code: true, name: true, kind: true } } } });
+    return s?.isActive ? { staffId: s.id, department: s.department } : null;
+  },
+
+  /** Active departments of one kind (LAB, RADIOLOGY, PHARMACY …). */
+  departmentsOfKind(kind: DepartmentKind) {
+    return prisma.department.findMany({ where: { kind, isActive: true }, orderBy: { name: 'asc' }, select: { id: true, code: true, name: true, kind: true } });
+  },
+
   async namesByUserIds(userIds: string[]) {
     const rows = await prisma.staff.findMany({ where: { userId: { in: userIds } }, select: { userId: true, staffCode: true, fullName: true } });
     return new Map(rows.map((r) => [r.userId, { name: r.fullName, code: r.staffCode }]));

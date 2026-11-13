@@ -33,6 +33,10 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
       return;
     }
   }
+  if (err?.type === 'entity.too.large') {
+    res.status(413).json({ error: { code: 'TOO_LARGE', message: 'The request is too large' } });
+    return;
+  }
   if (err?.type === 'entity.parse.failed') {
     res.status(400).json({ error: { code: 'BAD_JSON', message: 'Malformed JSON body' } });
     return;
