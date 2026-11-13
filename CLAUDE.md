@@ -15,7 +15,7 @@ patient → appointment (optional) → visit ─┬→ clinical_notes, vitals
 ## Stack (fixed — do not swap libraries)
 - **Server** (`/server`): Node.js 20, Express, TypeScript (ESM, `tsx` for dev), Prisma + PostgreSQL 16, Redis 7 (`ioredis`), Socket.IO, Nodemailer, Zod, Vitest.
 - **Web** (`/web`): React + Vite + TypeScript + React Router. **No UI framework.** Styles come from `web/src/theme/tokens.css` and the base components.
-- **Infra**: `docker-compose.yml` runs Postgres (5432) and Redis (6379). `.env.example` lists every variable; real secrets live only in `.env` (git-ignored).
+- **Infra**: `docker-compose.yml` runs Postgres (host port 5434) and Redis (host port 6380) — non-default ports so it can run beside other local projects. `.env.example` lists every variable; real secrets live only in `.env` (git-ignored).
 
 ## Folder structure
 ```

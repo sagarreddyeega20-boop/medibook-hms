@@ -6,8 +6,8 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     env: {
       NODE_ENV: 'test',
-      DATABASE_URL: 'postgresql://medibook:medibook@localhost:5432/medibook_hms?schema=public',
-      REDIS_URL: 'redis://localhost:6379',
+      DATABASE_URL: 'postgresql://medibook:medibook@localhost:5434/medibook_hms?schema=public',
+      REDIS_URL: 'redis://localhost:6380',
       JWT_SECRET: 'test-secret-test-secret-test-secret',
     },
   },
