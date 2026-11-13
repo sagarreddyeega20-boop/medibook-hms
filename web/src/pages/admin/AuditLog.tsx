@@ -9,6 +9,8 @@ interface Entry {
   entity: string;
   entityId: string | null;
   actor: { name: string; code: string | null } | null;
+  patient: { id: string; name: string; mrn: string | null } | null;
+  reason: string | null;
   ip: string | null;
   metadata: Record<string, unknown> | null;
   createdAt: string;
@@ -17,6 +19,7 @@ interface Entry {
 const ACTIONS = [
   'LOGIN_SUCCESS', 'LOGIN_FAILED', 'ACCOUNT_LOCKED', 'OTP_FAILED', 'OTP_LOCKED', 'LOGOUT', 'PASSWORD_SET',
   'STAFF_CREATED', 'STAFF_INVITE_SENT', 'ROLE_CHANGED', 'STAFF_DEACTIVATED', 'PATIENT_REGISTERED', 'ACCESS_DENIED',
+  'BREAK_GLASS', 'VIEW', 'NOTE_SAVED', 'ORDER_CREATED', 'REFERRAL_CREATED', 'REFERRAL_BOOKED', 'PRESCRIPTION_CREATED', 'CHARGE_CREATED',
 ];
 const dt = new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'Asia/Kolkata' });
 
@@ -28,7 +31,9 @@ function details(e: Entry): string {
     case 'ROLE_CHANGED': return `${s('staffCode')}: ${s('from')} → ${s('to')}`;
     case 'STAFF_CREATED': return `${s('staffCode')} · ${s('role')} · ${s('department')}`;
     case 'LOGIN_FAILED': return [s('staffId'), s('reason')?.toLowerCase().replace(/_/g, ' ')].filter(Boolean).join(' · ');
-    case 'ACCESS_DENIED': return `${e.entityId ?? ''}`;
+    case 'ACCESS_DENIED': return s('reason') === 'NO_CARE_RELATIONSHIP' ? `No care relationship · ${e.entity}` : `${e.entityId ?? ''}`;
+    case 'BREAK_GLASS': return `“${e.reason ?? ''}” · ${s('minutes')} min`;
+    case 'VIEW': return [e.entity.replace(/_/g, ' '), s('basis')?.toLowerCase().replace(/_/g, '-'), e.reason ? `“${e.reason}”` : null].filter(Boolean).join(' · ');
     case 'OTP_FAILED': return `${s('attemptsRemaining')} attempts left`;
     default: return [s('staffCode'), s('mrn'), s('role'), s('kind')?.toLowerCase()].filter(Boolean).join(' · ');
   }
@@ -59,13 +64,14 @@ export function AuditLog() {
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (entries ?? []).filter((e) => !q || `${e.actor?.name} ${e.actor?.code} ${details(e)} ${e.ip}`.toLowerCase().includes(q));
+    return (entries ?? []).filter((e) => !q || `${e.actor?.name} ${e.actor?.code} ${e.patient?.name} ${e.patient?.mrn} ${details(e)} ${e.ip}`.toLowerCase().includes(q));
   }, [entries, search]);
 
   const columns: Column<Entry>[] = [
     { key: 'time', header: 'Time (IST)', render: (e) => <span className="mb-time">{dt.format(new Date(e.createdAt))}</span> },
     { key: 'event', header: 'Event', render: (e) => <Badge status={e.action} /> },
     { key: 'actor', header: 'Who', render: (e) => (e.actor ? <PersonCell name={e.actor.name} sub={e.actor.code ?? undefined} /> : <span className="muted">Unknown account</span>) },
+    { key: 'patient', header: 'Patient', render: (e) => (e.patient ? <PersonCell name={e.patient.name} sub={e.patient.mrn ?? undefined} /> : <span className="muted">—</span>) },
     { key: 'details', header: 'Details', render: (e) => details(e) || '—' },
     { key: 'ip', header: 'IP', render: (e) => <span className="muted">{e.ip ?? '—'}</span> },
   ];
@@ -75,15 +81,15 @@ export function AuditLog() {
   return (
     <StaffLayout
       title="Audit log"
-      subtitle="Every login, failed login, lock, staff creation and role change."
+      subtitle="Every login, staff change, clinical view and break-glass access."
       search={{ placeholder: 'Search person, staff ID or IP', value: search, onChange: setSearch }}
       actions={<Button variant="secondary" onClick={load} loading={loading}>Refresh</Button>}
     >
       <StatGrid label="Last 24 hours">
         <StatCard label="Logins (24 h)" value={c('LOGIN_SUCCESS')} />
         <StatCard label="Failed logins / codes" value={c('LOGIN_FAILED', 'OTP_FAILED')} tone="blue" />
-        <StatCard label="Staff changes" value={c('STAFF_CREATED', 'ROLE_CHANGED', 'STAFF_DEACTIVATED')} tone="teal" />
-        <StatCard label="Locks / denied" value={c('ACCOUNT_LOCKED', 'OTP_LOCKED', 'ACCESS_DENIED')} tone="danger" />
+        <StatCard label="Clinical views" value={c('VIEW')} tone="teal" />
+        <StatCard label="Break-glass / denied" value={c('BREAK_GLASS', 'ACCOUNT_LOCKED', 'OTP_LOCKED', 'ACCESS_DENIED')} tone="danger" />
       </StatGrid>
       <DashGrid
         main={

@@ -48,11 +48,23 @@ export const AuditAction = {
   WALK_IN_REGISTERED: 'WALK_IN_REGISTERED',
   CONSULT_STARTED: 'CONSULT_STARTED',
   CONSULT_ENDED: 'CONSULT_ENDED',
+  // Clinical (every VIEW of clinical data is logged, not just changes)
+  VIEW: 'VIEW',
+  BREAK_GLASS: 'BREAK_GLASS',
+  NOTE_SAVED: 'NOTE_SAVED',
+  ALLERGIES_UPDATED: 'ALLERGIES_UPDATED',
+  ORDER_CREATED: 'ORDER_CREATED',
+  ORDER_CANCELLED: 'ORDER_CANCELLED',
+  REFERRAL_CREATED: 'REFERRAL_CREATED',
+  REFERRAL_BOOKED: 'REFERRAL_BOOKED',
+  PRESCRIPTION_CREATED: 'PRESCRIPTION_CREATED',
+  CHARGE_CREATED: 'CHARGE_CREATED',
 } as const;
 
 export interface AuditQuery {
   action?: string;
   actorId?: string;
+  patientId?: string;
   limit: number;
   before?: bigint; // id cursor
 }
@@ -76,6 +88,7 @@ export const auditService = {
       where: {
         action: q.action || undefined,
         actorId: q.actorId || undefined,
+        patientId: q.patientId || undefined,
         id: q.before ? { lt: q.before } : undefined,
       },
       orderBy: { id: 'desc' },

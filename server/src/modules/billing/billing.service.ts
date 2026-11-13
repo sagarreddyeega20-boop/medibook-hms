@@ -1,4 +1,5 @@
-import type { Prisma } from '@prisma/client';
+import type { CatalogueCategory, Prisma } from '@prisma/client';
+import { AppError } from '../../lib/errors.js';
 import { assertPaise } from '../../lib/money.js';
 import { prisma } from '../../lib/prisma.js';
 
@@ -49,4 +50,56 @@ export const billingService = {
       }),
     );
   },
+
+  /** Active catalogue items of these categories (doctor's order picker). */
+  catalogue(categories: CatalogueCategory[]) {
+    return prisma.serviceCatalogue.findMany({
+      where: { category: { in: categories }, isActive: true },
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
+      select: catalogueSelect,
+    });
+  },
+
+  async catalogueItem(id: string) {
+    const item = await prisma.serviceCatalogue.findUnique({ where: { id }, select: catalogueSelect });
+    if (!item || !item.isActive) throw AppError.notFound('That test or scan is not in the service catalogue');
+    return item;
+  },
+
+  /**
+   * One consultation charge per completed consult: the doctor's own catalogue item, else their department's.
+   * Idempotent per visit. Returns null (and logs) when no price is set, so a missing fee never blocks the doctor.
+   */
+  async addConsultationCharge(input: { visitId: string; staffCode: string; departmentCode: string | null; doctorName: string; createdById: string }, tx: Prisma.TransactionClient) {
+    const existing = await tx.charge.findFirst({ where: { visitId: input.visitId, catalogueItem: { category: 'CONSULTATION' }, status: { not: 'VOID' } }, select: { id: true } });
+    if (existing) return null;
+    const codes = [doctorConsultationCode(input.staffCode), ...(input.departmentCode ? [departmentConsultationCode(input.departmentCode)] : [])];
+    const items = await tx.serviceCatalogue.findMany({ where: { code: { in: codes }, isActive: true }, select: { id: true, code: true, name: true, pricePaise: true, departmentId: true } });
+    const item = items.find((i) => i.code === codes[0]) ?? items.find((i) => i.code === codes[1]);
+    if (!item) {
+      console.warn(`[billing] no consultation fee for ${input.staffCode}; visit ${input.visitId} has no consultation charge`);
+      return null;
+    }
+    return tx.charge.create({
+      data: {
+        visitId: input.visitId, catalogueItemId: item.id, departmentId: item.departmentId, description: `Consultation – ${input.doctorName}`,
+        quantity: 1, unitPricePaise: assertPaise(item.pricePaise), totalPaise: item.pricePaise, createdById: input.createdById,
+      },
+      select: { id: true, description: true, totalPaise: true, departmentId: true, status: true },
+    });
+  },
+
+  /** Charges on a visit (consultation screen summary). */
+  chargesForVisit(visitId: string) {
+    return prisma.charge.findMany({
+      where: { visitId, status: { not: 'VOID' } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, description: true, totalPaise: true, status: true, createdAt: true, department: { select: { name: true } } },
+    });
+  },
 };
+
+const catalogueSelect = {
+  id: true, code: true, name: true, category: true, pricePaise: true, isActive: true,
+  department: { select: { id: true, code: true, name: true } },
+} satisfies Prisma.ServiceCatalogueSelect;

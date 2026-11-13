@@ -34,9 +34,9 @@ export async function setupInfra() {
 }
 
 /** Creates an active staff account with a known password, bypassing the invite email. */
-export async function createStaff(role: StaffRole, opts: { password?: string | null } = {}): Promise<Fixture> {
+export async function createStaff(role: StaffRole, opts: { password?: string | null; department?: string; name?: string } = {}): Promise<Fixture> {
   const roleRow = await prisma.role.findUniqueOrThrow({ where: { code: role } });
-  const dept = await prisma.department.findFirstOrThrow({ where: { code: 'ADMIN' } });
+  const dept = await prisma.department.findFirstOrThrow({ where: { code: opts.department ?? 'ADMIN' } });
   const email = `t-${tag()}-${role.toLowerCase()}@test.medibook.local`;
   const passwordHash = opts.password === null ? null : await hashPassword(opts.password ?? TEST_PASSWORD);
   const staffCode = await nextStaffCode(role);
@@ -44,7 +44,7 @@ export async function createStaff(role: StaffRole, opts: { password?: string | n
     data: {
       email, passwordHash,
       roles: { create: { roleId: roleRow.id } },
-      staff: { create: { staffCode, fullName: `Test ${role}`, departmentId: dept.id } },
+      staff: { create: { staffCode, fullName: opts.name ?? `Test ${role}`, departmentId: dept.id } },
     },
     include: { staff: true },
   });

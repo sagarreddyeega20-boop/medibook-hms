@@ -6,6 +6,8 @@ import { emitScheduleChanged } from '../../lib/socket.js';
 import { localDateKey } from '../../lib/time.js';
 import { AuditAction, auditService } from '../audit/audit.service.js';
 import type { SessionData } from '../auth/session.service.js';
+import { billingService } from '../billing/billing.service.js';
+import { ordersService } from '../orders/orders.service.js';
 import { patientsService } from '../patients/patients.service.js';
 import { schedulingService, type Slot } from '../scheduling/scheduling.service.js';
 import { staffService } from '../staff/staff.service.js';
@@ -149,6 +151,7 @@ export const receptionService = {
           tx,
         );
         await schedulingService.markCheckedIn(appt.id, token, tx);
+        await ordersService.attachReferralVisit({ patientId: v.patientId, doctorId: v.doctorId, visitId: v.id }, tx);
         await queueEvents(tx, { visitId: v.id, patientId: v.patientId, doctorId: v.doctorId, appointmentId: appt.id, tokenNumber: token }, ['CHECKED_IN', 'TOKEN_ISSUED']);
         await auditService.record(
           { actorId: actor.session.userId, action: AuditAction.CHECKED_IN, entity: 'visits', entityId: v.id, patientId: v.patientId, ip: actor.ip, metadata: { ref: appt.ref, token, visitNumber: v.visitNumber } },
@@ -178,6 +181,7 @@ export const receptionService = {
         tx,
       );
       await queueEvents(tx, { visitId: v.id, patientId: v.patientId, doctorId: v.doctorId, tokenNumber: token }, ['CHECKED_IN', 'TOKEN_ISSUED']);
+      await ordersService.attachReferralVisit({ patientId: v.patientId, doctorId: v.doctorId, visitId: v.id }, tx);
       await auditService.record(
         { actorId: actor.session.userId, action: AuditAction.WALK_IN_REGISTERED, entity: 'visits', entityId: v.id, patientId: v.patientId, ip: actor.ip, metadata: { token, doctor: doctor.staffCode, visitNumber: v.visitNumber, offDuty: !a.onDuty } },
         tx,
@@ -189,6 +193,16 @@ export const receptionService = {
   },
 
   /* ---------------- Queue moves (call in / finish) ---------------- */
+
+  /** REFERRAL orders waiting to be booked ("to book" on the board). */
+  async referralsToBook() {
+    const rows = await ordersService.referralsToBook();
+    const patients = await patientsService.summaries(rows.map((r) => r.patientId));
+    return rows.map((r) => {
+      const p = patients.get(r.patientId);
+      return { ...r, patient: p ? { id: p.id, name: p.name, mrn: p.mrn, phone: p.phone } : null };
+    });
+  },
 
   async callIn(actor: Actor, visitId: string) {
     const visit = await prisma.$transaction(async (tx) => {
@@ -202,10 +216,21 @@ export const receptionService = {
     return visit;
   },
 
+  /** Ends the consultation: visit COMPLETED, a consultation charge for the doctor's department, any referral it answered COMPLETED. */
   async finish(actor: Actor, visitId: string) {
+    const before = await visitsService.get(visitId);
+    const doctor = await staffService.doctorById(before.doctorId);
     const visit = await prisma.$transaction(async (tx) => {
       const v = await visitsService.complete(visitId, tx);
       if (v.appointmentId) await schedulingService.setQueueStatus(v.appointmentId, 'COMPLETED', tx);
+      const charge = await billingService.addConsultationCharge(
+        { visitId: v.id, staffCode: doctor.staffCode, departmentCode: doctor.department?.code ?? null, doctorName: doctor.fullName, createdById: doctor.id },
+        tx,
+      );
+      if (charge) {
+        await auditService.record({ actorId: actor.session.userId, action: AuditAction.CHARGE_CREATED, entity: 'charges', entityId: charge.id, patientId: v.patientId, ip: actor.ip, metadata: { visitNumber: v.visitNumber, totalPaise: charge.totalPaise, kind: 'CONSULTATION' } }, tx);
+      }
+      await ordersService.completeReferralForVisit(v.id, tx);
       await queueEvents(tx, { visitId: v.id, patientId: v.patientId, doctorId: v.doctorId, appointmentId: v.appointmentId, tokenNumber: v.tokenNumber }, ['CONSULT_ENDED']);
       await auditService.record({ actorId: actor.session.userId, action: AuditAction.CONSULT_ENDED, entity: 'visits', entityId: v.id, patientId: v.patientId, ip: actor.ip, metadata: { token: v.tokenNumber } }, tx);
       return v;

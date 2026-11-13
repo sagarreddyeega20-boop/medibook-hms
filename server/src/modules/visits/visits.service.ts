@@ -1,4 +1,4 @@
-import type { Prisma, VisitType } from '@prisma/client';
+import type { Prisma, VisitStatus, VisitType } from '@prisma/client';
 import { AppError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { nextSequence } from '../../lib/sequence.js';
@@ -76,4 +76,54 @@ export const visitsService = {
     const rows = await prisma.visit.groupBy({ by: ['type'], where: { startedAt: { gte: start, lt: end }, status: { not: 'CANCELLED' } }, _count: true });
     return Object.fromEntries(rows.map((r) => [r.type, r._count])) as Partial<Record<VisitType, number>>;
   },
+
+  /* ---------------- Care relationship (used by the access layer) ---------------- */
+
+  /** True if this doctor has (or had) a visit with this patient. */
+  async doctorHasVisit(doctorId: string, patientId: string) {
+    return (await prisma.visit.count({ where: { doctorId, patientId, status: { not: 'CANCELLED' } } })) > 0;
+  },
+
+  /** Every visit of a patient, newest first (timeline). */
+  listForPatient(patientId: string) {
+    return prisma.visit.findMany({ where: { patientId }, orderBy: { startedAt: 'desc' }, select: visitSelect });
+  },
+
+  /* ---------------- Clinical notes ---------------- */
+
+  notesForVisits(visitIds: string[]) {
+    if (!visitIds.length) return Promise.resolve([] as NoteRow[]);
+    return prisma.clinicalNote.findMany({ where: { visitId: { in: visitIds } }, orderBy: { createdAt: 'desc' }, select: noteSelect });
+  },
+
+  /**
+   * Creates or updates the author's consultation note on a visit.
+   * complaint → subjective, findings → objective, diagnosis, advice → plan.
+   */
+  async saveNote(
+    input: { visitId: string; authorId: string; complaint?: string | null; findings?: string | null; diagnosis?: string | null; advice?: string | null },
+    tx: Prisma.TransactionClient,
+  ) {
+    const clean = (v?: string | null) => (v === undefined ? undefined : v?.trim() || null);
+    const data = { subjective: clean(input.complaint), objective: clean(input.findings), diagnosis: clean(input.diagnosis), plan: clean(input.advice) };
+    const existing = await tx.clinicalNote.findFirst({ where: { visitId: input.visitId, authorId: input.authorId, type: 'CONSULTATION' }, select: { id: true } });
+    const note = existing
+      ? await tx.clinicalNote.update({ where: { id: existing.id }, data, select: noteSelect })
+      : await tx.clinicalNote.create({ data: { visitId: input.visitId, authorId: input.authorId, type: 'CONSULTATION', ...data }, select: noteSelect });
+    return { note, created: !existing };
+  },
 };
+
+/** Visits a doctor may still write to. */
+export const EDITABLE_VISIT: VisitStatus[] = ['OPEN', 'IN_CONSULTATION'];
+
+const noteSelect = {
+  id: true, visitId: true, authorId: true, type: true, subjective: true, objective: true, diagnosis: true, plan: true, createdAt: true, updatedAt: true,
+} satisfies Prisma.ClinicalNoteSelect;
+export type NoteRow = Prisma.ClinicalNoteGetPayload<{ select: typeof noteSelect }>;
+
+/** API shape of a note: complaint, findings, diagnosis, advice. */
+export const presentNote = (n: NoteRow) => ({
+  id: n.id, visitId: n.visitId, authorId: n.authorId, type: n.type,
+  complaint: n.subjective, findings: n.objective, diagnosis: n.diagnosis, advice: n.plan, createdAt: n.createdAt, updatedAt: n.updatedAt,
+});

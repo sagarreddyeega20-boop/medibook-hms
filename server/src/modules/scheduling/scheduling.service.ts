@@ -12,6 +12,7 @@ import {
 import { AuditAction, auditService } from '../audit/audit.service.js';
 import type { SessionData } from '../auth/session.service.js';
 import { notificationsService } from '../notifications/notifications.service.js';
+import { ordersService } from '../orders/orders.service.js';
 import { patientsService } from '../patients/patients.service.js';
 import { staffService, type Doctor } from '../staff/staff.service.js';
 
@@ -369,7 +370,7 @@ export const schedulingService = {
   /* ---------------- Booking ---------------- */
 
   /** Confirms a hold into an appointment. The unique index decides if two bookings race for one slot. */
-  async book(actor: Actor, input: { holdId: string; patientId: string; reason?: string | null }) {
+  async book(actor: Actor, input: { holdId: string; patientId: string; reason?: string | null; referralOrderId?: string | null }) {
     const rec = await loadHold(input.holdId);
     if (!rec || rec.userId !== actor.session.userId) throw new AppError(409, 'HOLD_EXPIRED', 'Your hold on this slot has expired. Pick the slot again.');
     await assertCanActFor(actor, input.patientId);
@@ -377,6 +378,13 @@ export const schedulingService = {
     const doctor = await staffService.doctorById(rec.doctorId);
     if (!doctor.department) throw AppError.badRequest('This doctor has no department yet');
     assertBookable(await findSlot(rec.doctorId, new Date(rec.slotStart), actor.session.userId));
+    // Booking a doctor's referral: reception only, same patient, the department (and doctor) it was sent to.
+    let referralReason: string | null = null;
+    if (input.referralOrderId) {
+      if (!actor.session.permissions.includes('appointments:book')) throw AppError.forbidden('Referrals are booked at reception');
+      const r = await ordersService.assertReferralBookable(input.referralOrderId, { patientId: input.patientId, doctorId: doctor.id, departmentId: doctor.department.id });
+      referralReason = `Referral from ${r.fromDoctorName}`;
+    }
 
     let created: ApptRow;
     try {
@@ -386,10 +394,13 @@ export const schedulingService = {
           data: {
             ref, patientId: input.patientId, doctorId: doctor.id, departmentId: doctor.department!.id,
             slotStart: new Date(rec.slotStart), slotEnd: new Date(rec.slotEnd), status: 'BOOKED',
-            source: actor.session.kind === 'PATIENT' ? 'ONLINE' : 'RECEPTION', reason: input.reason?.trim() || null,
+            source: actor.session.kind === 'PATIENT' ? 'ONLINE' : 'RECEPTION', reason: input.reason?.trim() || referralReason,
           },
           select: apptSelect,
         });
+        if (input.referralOrderId) {
+          await ordersService.markReferralBooked(input.referralOrderId, { id: a.id, ref, doctorId: a.doctorId, slotStart: a.slotStart, patientId: a.patientId }, actor, tx);
+        }
         await auditService.record(
           {
             actorId: actor.session.userId, action: AuditAction.APPOINTMENT_BOOKED, entity: 'appointments', entityId: a.id, patientId: a.patientId, ip: actor.ip,
@@ -508,6 +519,12 @@ export const schedulingService = {
   },
 
   /** Appointments for these patients (portal: self + family; reception: one patient). */
+  /** One doctor's appointments for a day (doctor's own schedule), holds excluded. */
+  async listForDoctorDay(doctorId: string, dateKey: string) {
+    const { start, end } = localDayRange(dateKey);
+    return prisma.appointment.findMany({ where: { doctorId, slotStart: { gte: start, lt: end }, status: { not: 'HELD' } }, orderBy: { slotStart: 'asc' }, select: apptSelect });
+  },
+
   async listForPatients(patientIds: string[], opts: { take?: number } = {}) {
     const rows = await prisma.appointment.findMany({ where: { patientId: { in: patientIds } }, orderBy: { slotStart: 'desc' }, take: opts.take ?? 100, select: apptSelect });
     return present(rows);

@@ -53,6 +53,15 @@ const toSummary = (p: SummaryRow) => ({
 });
 export type PatientSummary = ReturnType<typeof toSummary>;
 
+/** Whole years between date of birth and `on`. */
+export function ageOn(dob: Date | null, on = new Date()): number | null {
+  if (!dob) return null;
+  let age = on.getUTCFullYear() - dob.getUTCFullYear();
+  const m = on.getUTCMonth() - dob.getUTCMonth();
+  if (m < 0 || (m === 0 && on.getUTCDate() < dob.getUTCDate())) age--;
+  return age;
+}
+
 export const patientsService = {
   /** Low-level create (MRN + row). Callers handle duplicate checks and auditing. */
   async register(input: NewPatient, tx: Prisma.TransactionClient = prisma) {
@@ -194,6 +203,26 @@ export const patientsService = {
       familyMembers: p.familyMembers.map((f) => ({ linkId: f.id, relationship: f.relationship, patient: toSummary(f.memberPatient) })),
       accountHolders: p.familyOf.map((f) => ({ linkId: f.id, relationship: f.relationship, patient: toSummary(f.accountPatient) })),
     };
+  },
+
+  /**
+   * Header for clinical screens (name, MRN, age, gender, allergies). Callers (visits module) must have
+   * checked the care relationship and written the VIEW audit row first.
+   */
+  async clinicalHeader(id: string) {
+    const p = await prisma.patient.findUnique({ where: { id }, select: { ...summarySelect, allergies: true, bloodGroup: true } });
+    if (!p) throw AppError.notFound('Patient not found');
+    return { ...toSummary(p), age: ageOn(p.dateOfBirth), allergies: p.allergies, bloodGroup: p.bloodGroup };
+  },
+
+  async headers(ids: string[]) {
+    if (!ids.length) return new Map<string, PatientSummary & { age: number | null }>();
+    const rows = await prisma.patient.findMany({ where: { id: { in: [...new Set(ids)] } }, select: summarySelect });
+    return new Map(rows.map((r) => [r.id, { ...toSummary(r), age: ageOn(r.dateOfBirth) }]));
+  },
+
+  async updateAllergies(id: string, allergies: string | null, tx: Prisma.TransactionClient = prisma) {
+    await tx.patient.update({ where: { id }, data: { allergies: allergies?.trim() || null } });
   },
 
   /* ---------------- Family members (one account, several patients) ---------------- */

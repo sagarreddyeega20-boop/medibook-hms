@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  AppShell, AvailabilityChips, DoctorBoardCard, SlotGrid, SlotLegend, Badge, Button, Card, DashGrid, NowConsultingCard, PersonCell, StatCard, StatGrid, Table, Textarea,
+  AppShell, AvailabilityChips, Pill, Timeline, DoctorBoardCard, SlotGrid, SlotLegend, Badge, Button, Card, DashGrid, NowConsultingCard, PersonCell, StatCard, StatGrid, Table, Textarea,
   type Column, type DayAvailability,
 } from '../../components';
 import { greeting } from '../../lib/format';
@@ -91,6 +91,23 @@ export function StaffDashboardDemo() {
           </>
         }
       />
+
+      <Card title="Patient timeline pattern" subtitle="Timeline + Pill filters (used on the consultation screen and patient record)">
+        <div className="stack">
+          <div className="mb-chips" role="group" aria-label="Demo filter">
+            <Pill selected>All · 5</Pill><Pill>Notes · 1</Pill><Pill>Lab &amp; radiology · 1</Pill><Pill>Referrals · 1</Pill>
+          </div>
+          <Timeline
+            items={[
+              { id: 't1', type: 'VISIT', title: 'OPD visit · V-20261114-0003', status: 'IN_CONSULTATION', meta: 'Today · 11:30 AM · Dr. Sneha Kulkarni · Nutrition', current: true, lines: [{ label: 'Complaint', value: 'Diet plan (referral)' }] },
+              { id: 't2', type: 'REFERRAL', title: 'Dr. Arjun Mehta → Nutrition', status: 'SCHEDULED', meta: 'Yesterday · 4:10 PM · Dr. Arjun Mehta · Cardiology', lines: [{ label: 'Reason', value: 'Weight loss and cardiac diet plan' }] },
+              { id: 't3', type: 'LAB', title: 'ECG (12-lead)', status: 'ORDERED', priority: 'URGENT', meta: 'Yesterday · 4:05 PM · Dr. Arjun Mehta · Laboratory', lines: [{ label: 'Indication', value: 'Rule out ischaemia' }] },
+              { id: 't4', type: 'NOTE', title: 'Clinical note · Stable angina', meta: 'Yesterday · 4:00 PM · Dr. Arjun Mehta · Cardiology', lines: [{ label: 'Findings', value: 'BP 150/95, BMI 31' }, { label: 'Diagnosis', value: 'Stable angina' }, { label: 'Advice', value: 'Low-fat diet' }] },
+              { id: 't5', type: 'PRESCRIPTION', title: 'Prescription · 1 item', status: 'ACTIVE', meta: 'Yesterday · 4:02 PM · Dr. Arjun Mehta · Cardiology', lines: [{ label: 'Atorvastatin 10 mg', value: '1 tablet · 0-0-1 · 30 days · After dinner' }] },
+            ]}
+          />
+        </div>
+      </Card>
 
       <Card title="Reception live board patterns" subtitle="DoctorBoardCard + SlotGrid + SlotLegend (used on /reception)">
         <div className="stack">

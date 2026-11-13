@@ -24,6 +24,11 @@ receptionRouter.get(
   },
 );
 
+/** Referrals from doctors that reception still has to book with the target department/doctor. */
+receptionRouter.get('/referrals', requirePermission('reception:read'), async (_req, res) => {
+  res.json({ referrals: await receptionService.referralsToBook() });
+});
+
 receptionRouter.post('/check-in', requirePermission('appointments:checkin'), validate({ body: z.object({ appointmentId: uuid }) }), async (req, res) => {
   res.status(201).json(await receptionService.checkIn(actor(req, res), res.locals.valid.body.appointmentId));
 });

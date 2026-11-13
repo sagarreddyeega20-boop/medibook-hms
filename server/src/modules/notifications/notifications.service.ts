@@ -1,6 +1,8 @@
 import { env } from '../../config/env.js';
 import { sendMail, type MailInput } from '../../lib/mailer.js';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
+import { emitTo, Rooms } from '../../lib/socket.js';
 import { emailTemplates, type TemplateData, type TemplateName } from './templates.js';
 
 /**
@@ -67,4 +69,29 @@ export const notificationsService = {
       });
     }
   },
+
+  /** In-app alert: stored, then pushed live to the user's socket room. */
+  async inApp(userId: string, msg: { subject: string; body: string; data?: Prisma.InputJsonValue }) {
+    const row = await prisma.notification.create({
+      data: { userId, channel: 'IN_APP', status: 'SENT', sentAt: new Date(), subject: msg.subject, body: msg.body, data: msg.data },
+      select: inAppSelect,
+    });
+    emitTo(Rooms.user(userId), 'notification', row);
+    return row;
+  },
+
+  async inbox(userId: string, opts: { unreadOnly?: boolean } = {}) {
+    const where = { userId, channel: 'IN_APP' as const, ...(opts.unreadOnly ? { readAt: null } : {}) };
+    const [items, unread] = await Promise.all([
+      prisma.notification.findMany({ where, orderBy: { createdAt: 'desc' }, take: 50, select: inAppSelect }),
+      prisma.notification.count({ where: { userId, channel: 'IN_APP', readAt: null } }),
+    ]);
+    return { items, unread };
+  },
+
+  async markRead(userId: string, id: string) {
+    await prisma.notification.updateMany({ where: { id, userId, readAt: null }, data: { readAt: new Date(), status: 'READ' } });
+  },
 };
+
+const inAppSelect = { id: true, subject: true, body: true, data: true, readAt: true, createdAt: true } satisfies Prisma.NotificationSelect;

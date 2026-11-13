@@ -24,4 +24,5 @@ export { AppointmentCard, DateTile, HeroBanner, PersonList, Pill, SideCard } fro
 export { ChatAppointment, ChatBlock, ChatMessage, ChatPanel, ConfirmationCard, DoctorSlotCard, QuickReplies, SlotChip, TypingIndicator } from './Chat';
 export { AuthCard, AuthNote, IdHighlight, OtpInput, Segmented, type SegmentOption } from './Auth';
 export { DoctorBoardCard, SLOT_STATE_LABELS, SlotGrid, SlotLegend, type SlotCell, type SlotGridState } from './Booking';
+export { Timeline, type TimelineEntry } from './Timeline';
 export { OptionTiles, OrDivider, OrderSummary, PaymentMethodCard, SummaryRows, TrustNote } from './Payment';

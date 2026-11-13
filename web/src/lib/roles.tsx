@@ -44,7 +44,7 @@ const MENU: MenuItem[] = [
   { to: '/admin/audit', label: 'Audit log', icon: 'search', roles: ['SUPER_ADMIN', 'ADMIN'], permission: 'audit:read' },
   { to: '/reception', label: 'Live board', icon: 'calendar', roles: ['RECEPTIONIST'], permission: 'reception:read', end: true },
   { to: '/reception/patients', label: 'Patients', icon: 'search', roles: ['RECEPTIONIST'], permission: 'patients:register' },
-  { to: '/doctor', label: 'My schedule', icon: 'calendar', roles: ['DOCTOR'], permission: 'schedule:own' },
+  { to: '/doctor', label: 'Today’s schedule', icon: 'calendar', roles: ['DOCTOR'], permission: 'schedule:own', end: true },
   { to: '/lab', label: 'Lab queue', icon: 'bolt', roles: ['LAB_TECH'], permission: 'orders:lab' },
   { to: '/radiology', label: 'Radiology queue', icon: 'bolt', roles: ['RADIOLOGY_TECH'], permission: 'orders:radiology' },
   { to: '/pharmacy', label: 'Prescriptions', icon: 'wallet', roles: ['PHARMACIST'], permission: 'pharmacy:dispense' },

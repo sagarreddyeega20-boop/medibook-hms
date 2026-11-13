@@ -47,6 +47,23 @@ const catalogue: { code: string; name: string; category: CatalogueCategory; dept
   { code: 'LAB-ECG', name: 'ECG (12-lead)', category: 'LAB_TEST', dept: 'LAB', pricePaise: 30000 },
   { code: 'LAB-CBC', name: 'Complete Blood Count', category: 'LAB_TEST', dept: 'LAB', pricePaise: 35000 },
   { code: 'RAD-CXR', name: 'Chest X-ray (PA view)', category: 'RADIOLOGY_SCAN', dept: 'RAD', pricePaise: 60000 },
+  { code: 'LAB-LIPID', name: 'Lipid profile', category: 'LAB_TEST', dept: 'LAB', pricePaise: 55000 },
+  { code: 'LAB-HBA1C', name: 'HbA1c (glycated haemoglobin)', category: 'LAB_TEST', dept: 'LAB', pricePaise: 45000 },
+  { code: 'LAB-TROP', name: 'Troponin I', category: 'LAB_TEST', dept: 'LAB', pricePaise: 90000 },
+  { code: 'RAD-ECHO', name: '2D Echocardiogram', category: 'RADIOLOGY_SCAN', dept: 'RAD', pricePaise: 250000 },
+  { code: 'RAD-USG-ABD', name: 'Ultrasound abdomen', category: 'RADIOLOGY_SCAN', dept: 'RAD', pricePaise: 120000 },
+];
+
+/** Starter pharmacy formulary (prices in paise; stock changes later go through stock_movements). */
+const medicines = [
+  { code: 'MED-ATOR10', name: 'Atorvastatin 10 mg', genericName: 'Atorvastatin', form: 'tablet', strength: '10 mg', purchasePricePaise: 450, sellingPricePaise: 800, stock: 500 },
+  { code: 'MED-ASP75', name: 'Aspirin 75 mg', genericName: 'Acetylsalicylic acid', form: 'tablet', strength: '75 mg', purchasePricePaise: 150, sellingPricePaise: 300, stock: 800 },
+  { code: 'MED-METO25', name: 'Metoprolol 25 mg', genericName: 'Metoprolol succinate', form: 'tablet', strength: '25 mg', purchasePricePaise: 350, sellingPricePaise: 650, stock: 400 },
+  { code: 'MED-AMLO5', name: 'Amlodipine 5 mg', genericName: 'Amlodipine', form: 'tablet', strength: '5 mg', purchasePricePaise: 200, sellingPricePaise: 400, stock: 600 },
+  { code: 'MED-METF500', name: 'Metformin 500 mg', genericName: 'Metformin', form: 'tablet', strength: '500 mg', purchasePricePaise: 120, sellingPricePaise: 250, stock: 900 },
+  { code: 'MED-PCM650', name: 'Paracetamol 650 mg', genericName: 'Paracetamol', form: 'tablet', strength: '650 mg', purchasePricePaise: 100, sellingPricePaise: 200, stock: 1000 },
+  { code: 'MED-CETZ10', name: 'Cetirizine 10 mg', genericName: 'Cetirizine', form: 'tablet', strength: '10 mg', purchasePricePaise: 80, sellingPricePaise: 180, stock: 700 },
+  { code: 'MED-PANT40', name: 'Pantoprazole 40 mg', genericName: 'Pantoprazole', form: 'tablet', strength: '40 mg', purchasePricePaise: 300, sellingPricePaise: 600, stock: 500 },
 ];
 
 const settings = [
@@ -180,6 +197,19 @@ async function main() {
     printed.push({ role: ROLE_NAMES[s.role], login: code, email: s.email, password: '(SEED_STAFF_PASSWORD)' });
   }
 
+  // Formulary: created once with opening stock (a PURCHASE movement by the pharmacist); re-seeding never touches stock.
+  const pharmacist = await prisma.staff.findFirstOrThrow({ where: { user: { email: 'pharmacy@medibook.local' } } });
+  for (const m of medicines) {
+    if (await prisma.medicine.findUnique({ where: { code: m.code } })) continue;
+    await prisma.medicine.create({
+      data: {
+        code: m.code, name: m.name, genericName: m.genericName, form: m.form, strength: m.strength,
+        purchasePricePaise: m.purchasePricePaise, sellingPricePaise: m.sellingPricePaise, stockQuantity: m.stock,
+        stockMovements: { create: { type: 'PURCHASE', quantity: m.stock, unitCostPaise: m.purchasePricePaise, reference: 'Opening stock (seed)', performedById: pharmacist.id } },
+      },
+    });
+  }
+
   // Demo patient (OTP-only, no password)
   let patient = await prisma.patient.findFirst({ where: { user: { email: demoPatient.email } } });
   if (!patient) {
@@ -234,7 +264,7 @@ async function main() {
     }
   }
 
-  console.log(`Seeded ${roles.length} roles, ${Object.keys(PERMISSIONS).length} permissions, ${departments.length} departments, ${catalogue.length} catalogue items.`);
+  console.log(`Seeded ${roles.length} roles, ${Object.keys(PERMISSIONS).length} permissions, ${departments.length} departments, ${catalogue.length} catalogue items, ${medicines.length} medicines.`);
   console.table(printed);
 }
 

@@ -91,7 +91,7 @@ schedulingRouter.delete('/holds/:holdId', canBook, validate({ params: z.object({
 schedulingRouter.post(
   '/appointments',
   canBook,
-  validate({ body: z.object({ holdId: uuid, patientId: uuid, reason: z.string().trim().max(300).optional() }) }),
+  validate({ body: z.object({ holdId: uuid, patientId: uuid, reason: z.string().trim().max(300).optional(), referralOrderId: uuid.optional() }) }),
   async (req, res) => {
     res.status(201).json({ appointment: await schedulingService.book(actor(req, res), res.locals.valid.body) });
   },

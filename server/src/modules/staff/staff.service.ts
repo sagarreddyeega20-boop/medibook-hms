@@ -104,6 +104,12 @@ export const staffService = {
     return d;
   },
 
+  async departmentByCode(code: string) {
+    const d = await prisma.department.findUnique({ where: { code }, select: { id: true, code: true, name: true, kind: true, isActive: true } });
+    if (!d) throw AppError.notFound(`Department ${code} not found`);
+    return d;
+  },
+
   async createDepartment(actor: Actor, input: { code: string; name: string; kind: DepartmentKind }) {
     const code = input.code.trim().toUpperCase();
     if (await prisma.department.findUnique({ where: { code } })) throw AppError.conflict(`Department code ${code} is already used`);

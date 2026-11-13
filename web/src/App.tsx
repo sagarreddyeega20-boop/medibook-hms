@@ -12,6 +12,9 @@ import { PatientAppointmentsDemo } from './pages/demo/PatientAppointmentsDemo';
 import { PatientHomeDemo } from './pages/demo/PatientHomeDemo';
 import { PaymentDemo } from './pages/demo/PaymentDemo';
 import { StaffDashboardDemo } from './pages/demo/StaffDashboardDemo';
+import { Consultation } from './pages/doctor/Consultation';
+import { DoctorHome } from './pages/doctor/DoctorHome';
+import { PatientRecord } from './pages/doctor/PatientRecord';
 import { Home } from './pages/Home';
 import { NotFound } from './pages/NotFound';
 import { FindDoctor } from './pages/patient/FindDoctor';
@@ -44,7 +47,9 @@ export function App() {
       <Route path="/admin/doctors" element={guard(ADMINS, <Doctors />)} />
       <Route path="/reception" element={guard(['RECEPTIONIST'], <ReceptionBoard />)} />
       <Route path="/reception/patients" element={guard(['RECEPTIONIST'], <Patients />)} />
-      <Route path="/doctor" element={guard(['DOCTOR'], <RoleHome />)} />
+      <Route path="/doctor" element={guard(['DOCTOR'], <DoctorHome />)} />
+      <Route path="/doctor/visits/:visitId" element={guard(['DOCTOR'], <Consultation />)} />
+      <Route path="/doctor/patients/:patientId" element={guard(['DOCTOR'], <PatientRecord />)} />
       <Route path="/lab" element={guard(['LAB_TECH'], <RoleHome />)} />
       <Route path="/radiology" element={guard(['RADIOLOGY_TECH'], <RoleHome />)} />
       <Route path="/pharmacy" element={guard(['PHARMACIST'], <RoleHome />)} />

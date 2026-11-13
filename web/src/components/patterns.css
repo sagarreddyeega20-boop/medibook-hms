@@ -513,3 +513,25 @@
   .mb-sched-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mb-toolbar > * { flex: 1 1 100%; }
 }
+
+/* =========================================================
+   Patient timeline (doctor workspace)
+   ========================================================= */
+.mb-timeline { position: relative; display: grid; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+.mb-timeline__item { position: relative; display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: var(--space-3); }
+.mb-timeline__item::before {
+  content: ""; position: absolute; top: 18px; bottom: calc(-1 * var(--space-4)); left: 6px; width: 2px; background: var(--border);
+}
+.mb-timeline__item:last-child::before { display: none; }
+.mb-timeline__dot { width: 14px; height: 14px; margin-top: 4px; border-radius: 50%; background: var(--surface); border: 3px solid var(--primary-border); }
+.mb-timeline__item.is-current .mb-timeline__dot { background: var(--primary); border-color: var(--primary); }
+.mb-timeline__body { min-width: 0; padding: var(--space-3) var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-tile); }
+.mb-timeline__item.is-current .mb-timeline__body { background: var(--primary-soft); border-color: var(--primary-border); }
+.mb-timeline__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.mb-timeline__title { font-size: 14px; color: var(--dark); overflow-wrap: anywhere; }
+.mb-timeline__meta { margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+.mb-timeline .mb-rows--compact dd { overflow-wrap: anywhere; white-space: pre-line; font-weight: var(--weight-medium); }
+@media (max-width: 560px) {
+  .mb-timeline .mb-rows--compact > div { display: grid; gap: 0; }
+  .mb-timeline .mb-rows--compact dt { min-width: 0; }
+}

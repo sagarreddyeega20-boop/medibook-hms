@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge, Card, DashGrid, EmptyState, StatCard, StatGrid } from '../../components';
+import { Badge, Button, Card, DashGrid, EmptyState, PersonList, StatCard, StatGrid } from '../../components';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { greeting } from '../../lib/format';
+import { useLive } from '../../lib/live';
+import { whenLabel } from '../../lib/time';
 import { ROLE_HOME, ROLE_LABELS, type Role } from '../../lib/roles';
 import { StaffLayout } from './StaffLayout';
 
@@ -57,6 +59,7 @@ export function RoleHome() {
         }
         side={
           <>
+            {user.permissions.includes('audit:read') && <AlertsCard />}
             <Card title="Your access" subtitle={`${user.staffCode} · ${ROLE_LABELS[user.role]}`}>
               <div className="stack">
                 <div className="row">
@@ -76,5 +79,36 @@ export function RoleHome() {
         }
       />
     </StaffLayout>
+  );
+}
+
+interface Alert { id: string; subject: string | null; body: string; readAt: string | null; createdAt: string; data: { kind?: string } | null }
+
+/** Admin in-app alerts (break-glass access). Arrives live over the user's socket room. */
+function AlertsCard() {
+  const [alerts, setAlerts] = useState<Alert[] | null>(null);
+  const load = () => api<{ items: Alert[] }>('/api/notifications').then((r) => setAlerts(r.items)).catch(() => setAlerts([]));
+  useEffect(() => void load(), []);
+  useLive(['notification'], () => void load());
+  const read = async (id: string) => {
+    await api(`/api/notifications/${id}/read`, { method: 'POST' }).catch(() => undefined);
+    void load();
+  };
+  const unread = alerts?.filter((a) => !a.readAt).length ?? 0;
+  return (
+    <Card title="Alerts" subtitle="Break-glass access to patient records." actions={unread ? <Badge tone="danger" dot size="sm">{unread} new</Badge> : undefined}>
+      {alerts?.length ? (
+        <PersonList
+          items={alerts.slice(0, 6).map((a) => ({
+            key: a.id,
+            name: <>{!a.readAt && <Badge status="BREAK_GLASS" size="sm" />} {a.subject}</>,
+            sub: `${whenLabel(a.createdAt)} · ${a.body}`,
+            action: a.readAt ? <Link className="mb-btn mb-btn--link" to="/admin/audit">Audit</Link> : <Button variant="link" onClick={() => void read(a.id)}>Mark read</Button>,
+          }))}
+        />
+      ) : (
+        <p className="muted">{alerts ? 'No alerts.' : 'Loading…'}</p>
+      )}
+    </Card>
   );
 }

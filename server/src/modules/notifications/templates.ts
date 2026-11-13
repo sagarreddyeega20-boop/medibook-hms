@@ -9,6 +9,19 @@ export interface TemplateData {
   'appointment-booked': AppointmentMail;
   'appointment-cancelled': AppointmentMail;
   'appointment-rescheduled': AppointmentMail;
+  'break-glass-alert': BreakGlassMail;
+}
+
+/** Sent to every Admin when a doctor uses break-glass access. Contains no clinical content. */
+export interface BreakGlassMail {
+  adminName: string;
+  doctor: string;
+  staffCode: string;
+  patient: string;
+  mrn: string;
+  reason: string;
+  at: string; // formatted hospital time
+  until: string;
 }
 
 export interface AppointmentMail {
@@ -64,6 +77,24 @@ export const emailTemplates: { [K in TemplateName]: (d: TemplateData[K]) => Rend
     appointmentMail(d, 'Appointment cancelled', `Your appointment has been cancelled${d.reason ? ` (reason: ${d.reason})` : ''}. You can book a new time on MediBook or at reception.`),
   'appointment-rescheduled': (d) =>
     appointmentMail(d, 'Appointment rescheduled', `Your appointment${d.previousWhen ? ` on ${d.previousWhen}` : ''} has been moved to the new time below.`),
+  'break-glass-alert': (d) => {
+    const rows: [string, string][] = [
+      ['Doctor', `${d.doctor} (${d.staffCode})`],
+      ['Patient', `${d.patient} (${d.mrn})`],
+      ['Reason given', d.reason],
+      ['When', d.at],
+      ['Access until', d.until],
+    ];
+    const intro = 'A doctor used break-glass access to open a patient record they have no care relationship with. Please review it in the audit log.';
+    return {
+      subject: `Break-glass access: ${d.doctor} opened ${d.mrn}`,
+      text: `Hello ${d.adminName},\n\n${intro}\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}`,
+      html: layout(`<p>Hello ${esc(d.adminName)},</p><p>${esc(intro)}</p>
+<table style="border-collapse:collapse;font-size:14px;margin:12px 0">${rows
+        .map(([k, v]) => `<tr><td style="padding:4px 16px 4px 0;color:#64748B">${esc(k)}</td><td style="padding:4px 0;font-weight:700">${esc(v)}</td></tr>`)
+        .join('')}</table>`),
+    };
+  },
 };
 
 function appointmentMail(d: AppointmentMail, heading: string, intro: string): RenderedEmail {

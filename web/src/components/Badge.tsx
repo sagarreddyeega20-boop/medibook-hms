@@ -29,6 +29,13 @@ export const STATUS_TONES: Record<string, BadgeTone> = {
   SCHEDULE_UPDATED: 'pending', LEAVE_ADDED: 'warning', LEAVE_REMOVED: 'neutral',
   APPOINTMENT_BOOKED: 'success', APPOINTMENT_CANCELLED: 'warning', APPOINTMENT_RESCHEDULED: 'pending',
   WALK_IN_REGISTERED: 'primary', CONSULT_STARTED: 'primary', CONSULT_ENDED: 'success',
+  // clinical audit events
+  VIEW: 'info', BREAK_GLASS: 'danger', NOTE_SAVED: 'primary', ALLERGIES_UPDATED: 'pending', ORDER_CREATED: 'primary', ORDER_CANCELLED: 'warning',
+  REFERRAL_CREATED: 'primary', REFERRAL_BOOKED: 'success', PRESCRIPTION_CREATED: 'primary', CHARGE_CREATED: 'neutral',
+  // timeline event types + order types / priority
+  VISIT: 'neutral', NOTE: 'primary', LAB: 'info', RADIOLOGY: 'info', RESULT: 'success', REFERRAL: 'pending', PRESCRIPTION: 'primary', MEDICATION: 'primary',
+  ROUTINE: 'neutral', URGENT: 'warning', STAT: 'danger', ABNORMAL: 'danger', DISPENSED: 'success', PARTIALLY_DISPENSED: 'pending',
+  TO_BOOK: 'warning',
   // visit types / booking source
   OPD: 'info', WALK_IN: 'primary', ONLINE: 'info', RECEPTION: 'neutral', INACTIVE: 'neutral',
 };
@@ -45,6 +52,14 @@ export const STATUS_LABELS: Record<string, string> = {
   WALK_IN: 'Walk-in',
   ONLINE: 'Booked online',
   RECEPTION: 'Booked at reception',
+  VIEW: 'Viewed record',
+  BREAK_GLASS: 'Break-glass',
+  RESULT_READY: 'Result ready',
+  LAB: 'Lab',
+  RADIOLOGY: 'Radiology',
+  NOTE: 'Note',
+  TO_BOOK: 'To book',
+  STAT: 'STAT',
 };
 
 export const statusLabel = (s: string) =>

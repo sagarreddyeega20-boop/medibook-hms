@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "medibook-hms",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set PORT=4000&& npm run dev"],
       "port": 5173
     }
   ]

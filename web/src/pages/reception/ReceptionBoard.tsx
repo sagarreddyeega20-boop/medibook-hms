@@ -50,6 +50,17 @@ interface Board {
   doctors: BoardDoctor[];
 }
 interface Hold { holdId: string; doctorId: string; slotStart: string; slotEnd: string; holdSeconds: number }
+/** A doctor's REFERRAL order waiting to be booked (no clinical reason — reception can't see it). */
+interface ReferralToBook {
+  orderId: string;
+  orderNumber: string;
+  priority: string;
+  createdAt: string;
+  patient: PersonRef | null;
+  fromDoctor: { name: string; department: string | null };
+  toDepartment: { id: string; name: string };
+  toDoctor: { id: string; name: string } | null;
+}
 
 const T = (n: number | null | undefined) => (n ? `T${n}` : '—');
 const short = (name: string) => {
@@ -71,10 +82,14 @@ export function ReceptionBoard() {
   const [search, setSearch] = useState('');
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [moving, setMoving] = useState<{ appointmentId: string; ref: string; patient: string } | null>(null);
+  const [referrals, setReferrals] = useState<ReferralToBook[]>([]);
+  const [referral, setReferral] = useState<ReferralToBook | null>(null);
 
   const load = useCallback(async () => {
     const qs = new URLSearchParams({ date, ...(deptId ? { departmentId: deptId } : {}) });
-    setBoard(await api<Board>(`/api/reception/board?${qs}`));
+    const [b, r] = await Promise.all([api<Board>(`/api/reception/board?${qs}`), api<{ referrals: ReferralToBook[] }>('/api/reception/referrals')]);
+    setBoard(b);
+    setReferrals(r.referrals);
   }, [date, deptId]);
 
   useEffect(() => {
@@ -139,6 +154,15 @@ export function ReceptionBoard() {
       <DashGrid
         main={
           <>
+            {referral && (
+              <Card
+                title={`Booking referral ${referral.orderNumber}`}
+                subtitle={`${referral.patient?.name ?? 'Patient'} → ${referral.toDoctor ? `${referral.toDoctor.name} · ` : ''}${referral.toDepartment.name}. Pick a free slot on the grid.`}
+                actions={<><Badge status={referral.priority} size="sm" /><Button variant="ghost" size="sm" onClick={() => setReferral(null)}>Stop</Button></>}
+              >
+                <p className="muted">From {referral.fromDoctor.name}{referral.fromDoctor.department ? ` (${referral.fromDoctor.department})` : ''}. Once booked, the referral moves to Scheduled and the doctor can open the patient’s timeline.</p>
+              </Card>
+            )}
             <Card
               title="Doctors"
               subtitle="Status is calculated from schedules, leaves and the queue — it updates live."
@@ -207,10 +231,23 @@ export function ReceptionBoard() {
                 isToday={isToday}
                 moving={moving}
                 onMove={setMoving}
+                referral={referral && (!referral.toDoctor || referral.toDoctor.id === doctor.id) && referral.toDepartment.id === doctor.department.id ? referral : null}
+                onReferralBooked={() => setReferral(null)}
                 onClose={() => setSlotStart(null)}
                 onChanged={() => void load()}
               />
             )}
+            <ReferralsCard
+              referrals={referrals}
+              active={referral?.orderId ?? null}
+              onBook={(r) => {
+                setReferral(r);
+                setMoving(null);
+                setSlotStart(null);
+                setDeptId(r.toDepartment.id);
+                setDoctorId(r.toDoctor?.id ?? null);
+              }}
+            />
             {doctor && <QueueCard doctor={doctor} onChanged={() => void load()} />}
             {!doctor && <Card title="Queue"><p className="muted">Select a doctor to see their queue.</p></Card>}
           </>
@@ -224,18 +261,22 @@ export function ReceptionBoard() {
 
 /* ---------------- Selected slot: book / check in / cancel / reschedule ---------------- */
 
-function SlotPanel({ doctor, slot, isToday, moving, onMove, onClose, onChanged }: {
+function SlotPanel({ doctor, slot, isToday, moving, onMove, referral, onReferralBooked, onClose, onChanged }: {
   doctor: BoardDoctor;
   slot: BoardSlot;
   isToday: boolean;
   moving: { appointmentId: string; ref: string; patient: string } | null;
   onMove: (m: { appointmentId: string; ref: string; patient: string } | null) => void;
+  referral: ReferralToBook | null;
+  onReferralBooked: () => void;
   onClose: () => void;
   onChanged: () => void;
 }) {
   const toast = useToast();
   const [hold, setHold] = useState<Hold | null>(null);
-  const [patient, setPatient] = useState<PatientSummary | null>(null);
+  const [patient, setPatient] = useState<PatientSummary | null>(
+    referral?.patient ? { id: referral.patient.id, name: referral.patient.name, mrn: referral.patient.mrn, phone: referral.patient.phone, gender: 'UNKNOWN', dateOfBirth: null, email: null, hasPortalAccount: false } : null,
+  );
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -272,9 +313,13 @@ function SlotPanel({ doctor, slot, isToday, moving, onMove, onClose, onChanged }
   const confirm = () =>
     run(async () => {
       if (!hold || !patient) return;
-      const { appointment } = await api<{ appointment: { ref: string } }>('/api/scheduling/appointments', { json: { holdId: hold.holdId, patientId: patient.id, reason: reason || undefined } });
+      const forReferral = referral && referral.patient?.id === patient.id ? referral : null;
+      const { appointment } = await api<{ appointment: { ref: string } }>('/api/scheduling/appointments', {
+        json: { holdId: hold.holdId, patientId: patient.id, reason: reason || undefined, referralOrderId: forReferral?.orderId },
+      });
       setHold(null);
-      toast.success(`Booked ${appointment.ref}`, `${patient.name} with ${doctor.name}, ${when}.`);
+      toast.success(`Booked ${appointment.ref}`, `${patient.name} with ${doctor.name}, ${when}.${forReferral ? ` Referral ${forReferral.orderNumber} is now scheduled.` : ''}`);
+      if (forReferral) onReferralBooked();
       onChanged();
     });
 
@@ -335,6 +380,7 @@ function SlotPanel({ doctor, slot, isToday, moving, onMove, onClose, onChanged }
         )}
         {slot.bookable && !moving && !hold && (
           <>
+            {referral && <p className="muted">For referral <strong>{referral.orderNumber}</strong> · {referral.patient?.name}</p>}
             <p className="muted">Free · {doctor.consultationFeePaise !== null ? `Consultation ${formatPaise(doctor.consultationFeePaise)}` : 'No fee set'}</p>
             <div><Button loading={busy} onClick={placeHold}>Hold &amp; book this slot</Button></div>
           </>
@@ -472,5 +518,26 @@ function WalkInModal({ open, onClose, doctors, defaultDoctorId, onDone }: { open
         </div>
       )}
     </Modal>
+  );
+}
+
+/* ---------------- Referrals from doctors waiting to be booked ---------------- */
+
+function ReferralsCard({ referrals, active, onBook }: { referrals: ReferralToBook[]; active: string | null; onBook: (r: ReferralToBook) => void }) {
+  return (
+    <Card title="Referrals to book" subtitle="Doctors' referrals — book each with the department (or doctor) named." actions={referrals.length ? <Badge status="TO_BOOK" size="sm">{referrals.length} to book</Badge> : undefined}>
+      {referrals.length ? (
+        <PersonList
+          items={referrals.map((r) => ({
+            key: r.orderId,
+            name: <>{r.patient?.name ?? 'Patient'} {r.priority !== 'ROUTINE' && <Badge status={r.priority} size="sm" />}</>,
+            sub: `${r.patient?.mrn ?? ''} · ${r.fromDoctor.name} → ${r.toDoctor ? `${r.toDoctor.name}, ` : ''}${r.toDepartment.name} · ${whenLabel(r.createdAt)}`,
+            action: active === r.orderId ? <Badge tone="primary" size="sm">Booking…</Badge> : <Button variant="link" onClick={() => onBook(r)}>Book</Button>,
+          }))}
+        />
+      ) : (
+        <p className="muted">No referrals waiting. When a doctor refers a patient, it appears here to book.</p>
+      )}
+    </Card>
   );
 }
