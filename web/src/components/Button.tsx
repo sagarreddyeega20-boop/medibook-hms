@@ -1,11 +1,16 @@
 import type { ButtonHTMLAttributes } from 'react';
 import { cx } from '../lib/cx';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'soft' | 'ghost' | 'danger';
+/**
+ * v1 button styles:
+ * primary = teal filled · secondary = white outline · dark = navy filled ("View history")
+ * soft = teal tint · ghost = text only · danger = red filled · danger-outline = v1 "Cancel" · link = underlined teal text
+ */
+export type ButtonVariant = 'primary' | 'secondary' | 'dark' | 'soft' | 'ghost' | 'danger' | 'danger-outline' | 'link';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
-  size?: 'md' | 'sm';
+  size?: 'md' | 'sm' | 'lg';
   block?: boolean;
   loading?: boolean;
 }
@@ -14,7 +19,7 @@ export function Button({ variant = 'primary', size = 'md', block, loading, class
   return (
     <button
       type={type}
-      className={cx('mb-btn', `mb-btn--${variant}`, size === 'sm' && 'mb-btn--sm', block && 'mb-btn--block', className)}
+      className={cx('mb-btn', `mb-btn--${variant}`, size !== 'md' && `mb-btn--${size}`, block && 'mb-btn--block', className)}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       {...rest}

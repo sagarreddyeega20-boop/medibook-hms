@@ -32,7 +32,7 @@ const columns: Column<DemoOrder>[] = [
 ];
 
 const statusGroups = {
-  Appointment: ['BOOKED', 'CHECKED_IN', 'IN_CONSULTATION', 'COMPLETED', 'CANCELLED', 'NO_SHOW'],
+  Appointment: ['HELD', 'BOOKED', 'CONFIRMED', 'CHECKED_IN', 'IN_CONSULTATION', 'COMPLETED', 'CANCELLED', 'NO_SHOW'],
   Order: ['ORDERED', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'RESULT_READY', 'CANCELLED'],
   Invoice: ['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'VOID'],
   'Doctor live status': ['AVAILABLE', 'IN_CONSULTATION', 'RUNNING_LATE', 'OFF_DUTY', 'ON_LEAVE'],
@@ -123,7 +123,7 @@ export function ComponentsDemo() {
           ))}
           <div className="row">
             <span className="muted">Tones:</span>
-            {(['primary', 'success', 'danger', 'warning', 'info', 'neutral'] as const).map((t) => <Badge key={t} tone={t}>{t}</Badge>)}
+            {(['primary', 'success', 'danger', 'warning', 'pending', 'info', 'neutral'] as const).map((t) => <Badge key={t} tone={t}>{t}</Badge>)}
           </div>
         </div>
       </Card>

@@ -37,13 +37,22 @@
   --danger-hover: #991B1B;
   --danger-soft: #FEF2F2;
   --danger-border: #FECACA;
-  --warning: #B45309;
-  --warning-soft: #FEF3C7;
-  --warning-border: #FDE68A;
+  --warning: #9A3412;          /* v1 orange: awaiting / cancelled on the doctor schedule */
+  --warning-soft: #FFEDD5;
+  --warning-border: #FED7AA;
+  --pending: #854D0E;          /* v1 yellow: awaiting payment */
+  --pending-soft: #FEF9C3;
+  --pending-border: #FDE68A;
   --info: #1D4ED8;
   --info-soft: #DBEAFE;
   --info-border: #BFDBFE;
   --neutral-soft: #F1F5F9;
+  --neutral-text: #475569;
+  --danger-outline: #FCA5A5;
+  --placeholder: #94A3B8;
+  --table-head: #F8FAFC;
+  --chip-hover: #D4F1EA;
+  --side-hover-border: #64748B;
 
   /* Typography */
   --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -79,9 +88,13 @@
 
   /* Sizes */
   --control-height: 42px;
-  --control-height-sm: 34px;
+  --control-height-sm: 36px;
   --side-width: 248px;
-  --topbar-height: 64px;
+  --nav-height: 68px;          /* patient top navbar */
+  --container: 1100px;         /* patient pages max width */
+  --dash-aside: 340px;         /* staff right side panel */
+  --patient-aside: 300px;      /* patient right column */
+  --radius-tile: 12px;         /* date tiles, day chips, inner cards */
 
   /* Effects */
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
