@@ -1,0 +1,95 @@
+/* =========================================================
+   MediBook HMS — design tokens (from MediBook v1).
+   The ONLY place colours, fonts, radii, shadows and spacing are defined.
+   Pages and components use var(--token); never hard-code values.
+   ========================================================= */
+
+:root {
+  /* Brand */
+  --primary: #0F766E;
+  --primary-hover: #0B5F59;
+  --primary-soft: #E6F7F3;
+  --primary-border: #A7E3D6;
+
+  /* Neutrals */
+  --dark: #0F172A;
+  --dark-hover: #1E293B;
+  --dark-raised: #111C33;
+  --dark-border: #334155;
+  --text: #1E293B;
+  --muted: #64748B;
+  --bg: #F1F5F4;
+  --surface: #FFFFFF;
+  --border: #E2E8F0;
+  --on-primary: #FFFFFF;
+
+  /* Sidebar text on --dark */
+  --side-text: #CBD5E1;
+  --side-muted: #94A3B8;
+  --side-avatar: #134E4A;
+  --side-focus: rgba(167, 227, 214, 0.45);
+
+  /* Status */
+  --success: #15803D;
+  --success-soft: #DCFCE7;
+  --success-border: #BBF7D0;
+  --danger: #B91C1C;
+  --danger-hover: #991B1B;
+  --danger-soft: #FEF2F2;
+  --danger-border: #FECACA;
+  --warning: #B45309;
+  --warning-soft: #FEF3C7;
+  --warning-border: #FDE68A;
+  --info: #1D4ED8;
+  --info-soft: #DBEAFE;
+  --info-border: #BFDBFE;
+  --neutral-soft: #F1F5F9;
+
+  /* Typography */
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --text-xs: 12px;
+  --text-sm: 13.5px;
+  --text-md: 15px;
+  --text-lg: 17px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-heavy: 800;
+  --leading: 1.55;
+
+  /* Radii */
+  --radius-card: 16px;
+  --radius-control: 10px;
+  --radius-sm: 8px;
+  --radius-pill: 999px;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Sizes */
+  --control-height: 42px;
+  --control-height-sm: 34px;
+  --side-width: 248px;
+  --topbar-height: 64px;
+
+  /* Effects */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.18);
+  --focus-ring: 0 0 0 3px rgba(15, 118, 110, 0.18);
+  --overlay: rgba(15, 23, 42, 0.45);
+  --transition: 0.15s ease;
+  --z-modal: 100;
+  --z-toast: 200;
+}

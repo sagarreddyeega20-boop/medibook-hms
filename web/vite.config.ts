@@ -1,0 +1,15 @@
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  plugins: [react()],
+  envDir: '..', // single root .env; only VITE_* vars are exposed
+  server: {
+    port: 5173,
+    strictPort: true,
+    proxy: {
+      '/api': 'http://localhost:4000',
+      '/socket.io': { target: 'http://localhost:4000', ws: true },
+    },
+  },
+});
