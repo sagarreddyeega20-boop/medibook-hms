@@ -25,6 +25,7 @@ import { NotFound } from './pages/NotFound';
 import { FindDoctor } from './pages/patient/FindDoctor';
 import { MyAppointments } from './pages/patient/MyAppointments';
 import { MyBills } from './pages/patient/MyBills';
+import { PayBooking } from './pages/patient/PayBooking';
 import { PatientHome } from './pages/patient/PatientHome';
 import { Dispense } from './pages/pharmacy/Dispense';
 import { PharmacyHome } from './pages/pharmacy/PharmacyHome';
@@ -75,6 +76,7 @@ export function App() {
       <Route path="/patient/doctors" element={guard(['PATIENT'], <FindDoctor />)} />
       <Route path="/patient/appointments" element={guard(['PATIENT'], <MyAppointments />)} />
       <Route path="/patient/bills" element={guard(['PATIENT'], <MyBills />)} />
+      <Route path="/patient/pay" element={guard(['PATIENT'], <PayBooking />)} />
 
       {/* Developer reference: foundation overview + v1 pattern demos */}
       <Route path="/demo" element={<Home />} />

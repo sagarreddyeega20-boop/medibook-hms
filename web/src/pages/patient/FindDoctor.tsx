@@ -89,6 +89,13 @@ export function FindDoctor() {
     }
   };
 
+  /** New bookings go to the payment page (Pay now / Pay at hospital); the hold travels with them. */
+  const toPayment = () => {
+    if (!hold) return;
+    holdRef.current = null; // the payment page owns the hold now
+    navigate(`/patient/pay?${new URLSearchParams({ hold: hold.holdId, patient: patientId, from: 'doctors' })}`, { state: { reason } });
+  };
+
   const setDept = (id: string) => setParams({ ...(id ? { department: id } : {}), ...(rescheduleId ? { reschedule: rescheduleId, ref: rescheduleRef ?? '' } : {}) });
   const days = Array.from({ length: DAYS }, (_, i) => addDays(todayKey(), i));
   const fee = hold?.doctor.consultationFeePaise ?? 0;
@@ -176,9 +183,9 @@ export function FindDoctor() {
                       <Select label="Booking for" value={patientId} options={household.map((h) => ({ value: h.patient.id, label: `${h.patient.name} (${h.relationship})` }))} onChange={(e) => setPatientId(e.target.value)} />
                     )}
                     {!rescheduleId && <Textarea label="Reason for visit (optional)" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />}
-                    <Button size="lg" block loading={busy} disabled={left === 0 || !patientId} onClick={confirm}>{rescheduleId ? 'Move my appointment' : 'Confirm booking'}</Button>
+                    <Button size="lg" block loading={busy} disabled={left === 0 || !patientId} onClick={rescheduleId ? confirm : toPayment}>{rescheduleId ? 'Move my appointment' : 'Continue to payment'}</Button>
                     <Button variant="ghost" block onClick={() => { void bookingApi.release(hold.holdId); setHold(null); }}>Choose another time</Button>
-                    {!rescheduleId && <TrustNote>Pay at the hospital counter on the day. Nothing is charged online.</TrustNote>}
+                    {!rescheduleId && <TrustNote>Next: pay online now, or choose to pay at the hospital.</TrustNote>}
                   </div>
                 </Card>
               </>

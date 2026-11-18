@@ -25,5 +25,5 @@ export { ChatAppointment, ChatBlock, ChatMessage, ChatPanel, ConfirmationCard, D
 export { AuthCard, AuthNote, IdHighlight, OtpInput, Segmented, type SegmentOption } from './Auth';
 export { DoctorBoardCard, SLOT_STATE_LABELS, SlotGrid, SlotLegend, type SlotCell, type SlotGridState } from './Booking';
 export { Timeline, type TimelineEntry } from './Timeline';
-export { OptionTiles, OrDivider, OrderSummary, PaymentMethodCard, SummaryRows, TrustNote } from './Payment';
+export { OptionTiles, OrDivider, OrderSummary, PaymentMethodCard, ResultCard, SummaryRows, TrustNote } from './Payment';
 export { HBarChart, TrendChart } from './Charts';

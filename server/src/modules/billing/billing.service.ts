@@ -43,6 +43,12 @@ export const invoiceStatusFor = (totalPaise: number, paidPaise: number): Invoice
 
 const sum = <T>(rows: T[], f: (r: T) => number) => rows.reduce((n, r) => n + f(r), 0);
 
+/** Refund states where the money has gone back to the patient (counter: approved by accounts; online: processed by the gateway). */
+export const MONEY_BACK: RefundStatus[] = ['APPROVED', 'REFUNDED'];
+
+/** How a booking's consultation is paid, for My appointments, the reception board and the counter. */
+export type PrepaidState = 'PAID_ONLINE' | 'REFUNDED';
+
 /** INV-20261114-0001 / RCPT-20261114-0001: per-day counters, never reused. */
 async function nextNumber(prefix: 'INV' | 'RCPT', tx: Prisma.TransactionClient) {
   const day = localDateKey().replace(/-/g, '');
@@ -118,11 +124,11 @@ async function syncVisitInvoice(tx: Prisma.TransactionClient, visitId: string) {
 /** Backfill: puts any charge that is not yet on an invoice onto its visit's invoice. */
 async function syncPendingCharges(visitIds?: string[]) {
   const rows = await prisma.charge.findMany({
-    where: { status: 'PENDING', invoiceLine: null, ...(visitIds ? { visitId: { in: visitIds } } : {}) },
+    where: { status: 'PENDING', invoiceLine: null, visitId: visitIds ? { in: visitIds } : { not: null } },
     distinct: ['visitId'],
     select: { visitId: true },
   });
-  for (const r of rows) await prisma.$transaction((tx) => syncVisitInvoice(tx, r.visitId));
+  for (const r of rows) if (r.visitId) await prisma.$transaction((tx) => syncVisitInvoice(tx, r.visitId!));
 }
 
 const changed = (kind: string, patientId?: string) => emitTo(Rooms.billing, 'billing:changed', { kind, patientId });
@@ -130,19 +136,24 @@ const changed = (kind: string, patientId?: string) => emitTo(Rooms.billing, 'bil
 /* ---------------- Read models ---------------- */
 
 const invoiceSelect = {
-  id: true, invoiceNumber: true, visitId: true, patientId: true, status: true, issuedAt: true, createdAt: true,
+  id: true, invoiceNumber: true, visitId: true, appointmentId: true, patientId: true, status: true, issuedAt: true, createdAt: true,
   subtotalPaise: true, discountPaise: true, taxPaise: true, totalPaise: true, paidPaise: true,
+  allocations: { where: { payment: { channel: 'ONLINE' } }, select: { amountPaise: true } },
 } satisfies Prisma.InvoiceSelect;
 type InvoiceRow = Prisma.InvoiceGetPayload<{ select: typeof invoiceSelect }>;
 
+const visitIdsOf = (ids: (string | null)[]) => ids.filter((x): x is string => !!x);
+
 async function presentInvoices(rows: InvoiceRow[]) {
-  const [visits, patients] = await Promise.all([visitsService.billingHeaders(rows.map((r) => r.visitId)), patientsService.summaries(rows.map((r) => r.patientId))]);
-  return rows.map((r) => {
+  const [visits, patients] = await Promise.all([visitsService.billingHeaders(visitIdsOf(rows.map((r) => r.visitId))), patientsService.summaries(rows.map((r) => r.patientId))]);
+  return rows.map(({ allocations, ...r }) => {
     const p = patients.get(r.patientId);
     return {
       ...r,
       balancePaise: r.totalPaise - r.paidPaise,
-      visit: visits.get(r.visitId) ?? null,
+      /** Paid in advance through the online gateway (prepaid consultation). */
+      paidOnlinePaise: sum(allocations, (a) => a.amountPaise),
+      visit: r.visitId ? (visits.get(r.visitId) ?? null) : null,
       patient: p ? { id: p.id, name: p.name, mrn: p.mrn } : null,
     };
   });
@@ -150,7 +161,7 @@ async function presentInvoices(rows: InvoiceRow[]) {
 export type InvoiceSummary = Awaited<ReturnType<typeof presentInvoices>>[number];
 
 const paymentSelect = {
-  id: true, receiptNumber: true, patientId: true, method: true, status: true, amountPaise: true, reference: true, receivedAt: true,
+  id: true, receiptNumber: true, patientId: true, method: true, channel: true, provider: true, last4: true, status: true, amountPaise: true, reference: true, receivedAt: true,
   receivedBy: { select: { fullName: true, staffCode: true } },
   allocations: { orderBy: { createdAt: 'asc' }, select: { invoiceId: true, amountPaise: true, invoice: { select: { invoiceNumber: true, visitId: true, totalPaise: true, paidPaise: true, status: true } } } },
   refunds: { orderBy: { createdAt: 'asc' }, select: { id: true, invoiceId: true, amountPaise: true, status: true, reason: true, createdAt: true, processedAt: true } },
@@ -160,21 +171,21 @@ type PaymentRow = Prisma.PaymentGetPayload<{ select: typeof paymentSelect }>;
 async function presentPayments(rows: PaymentRow[]) {
   const [patients, visits] = await Promise.all([
     patientsService.summaries(rows.map((r) => r.patientId)),
-    visitsService.billingHeaders(rows.flatMap((r) => r.allocations.map((a) => a.invoice.visitId))),
+    visitsService.billingHeaders(visitIdsOf(rows.flatMap((r) => r.allocations.map((a) => a.invoice.visitId)))),
   ]);
   return rows.map((r) => {
     const p = patients.get(r.patientId);
     return {
-      id: r.id, receiptNumber: r.receiptNumber, method: r.method, status: r.status, amountPaise: r.amountPaise, reference: r.reference, receivedAt: r.receivedAt,
+      id: r.id, receiptNumber: r.receiptNumber, method: r.method, channel: r.channel, provider: r.provider, last4: r.last4, status: r.status, amountPaise: r.amountPaise, reference: r.reference, receivedAt: r.receivedAt,
       receivedBy: r.receivedBy ? { name: r.receivedBy.fullName, staffCode: r.receivedBy.staffCode } : null,
       patient: p ? { id: p.id, name: p.name, mrn: p.mrn } : null,
       allocations: r.allocations.map((a) => ({
         invoiceId: a.invoiceId, invoiceNumber: a.invoice.invoiceNumber, amountPaise: a.amountPaise,
         invoiceTotalPaise: a.invoice.totalPaise, invoiceBalancePaise: a.invoice.totalPaise - a.invoice.paidPaise, invoiceStatus: a.invoice.status,
-        visit: visits.get(a.invoice.visitId) ?? null,
+        visit: a.invoice.visitId ? (visits.get(a.invoice.visitId) ?? null) : null,
       })),
       refunds: r.refunds,
-      refundedPaise: sum(r.refunds.filter((x) => x.status === 'APPROVED'), (x) => x.amountPaise),
+      refundedPaise: sum(r.refunds.filter((x) => MONEY_BACK.includes(x.status)), (x) => x.amountPaise),
     };
   });
 }
@@ -203,12 +214,15 @@ async function presentRefunds(rows: Prisma.RefundGetPayload<{ select: typeof ref
 }
 export type RefundView = Awaited<ReturnType<typeof presentRefunds>>[number];
 
-/** Expected takings for one local day: confirmed payments by method minus refunds approved (paid out) that day. */
+/**
+ * Expected counter takings for one local day: confirmed COUNTER payments by method minus counter refunds approved
+ * (paid out) that day. Online prepayments never pass through the cash drawer, so they are not part of it.
+ */
 async function dayTotals(dateKey: string) {
   const { start, end } = localDayRange(dateKey);
   const [payments, refunds] = await Promise.all([
-    prisma.payment.groupBy({ by: ['method'], where: { status: 'CONFIRMED', receivedAt: { gte: start, lt: end } }, _sum: { amountPaise: true }, _count: true }),
-    prisma.refund.groupBy({ by: ['method'], where: { status: 'APPROVED', processedAt: { gte: start, lt: end } }, _sum: { amountPaise: true }, _count: true }),
+    prisma.payment.groupBy({ by: ['method'], where: { status: 'CONFIRMED', channel: 'COUNTER', receivedAt: { gte: start, lt: end } }, _sum: { amountPaise: true }, _count: true }),
+    prisma.refund.groupBy({ by: ['method'], where: { status: 'APPROVED', payment: { channel: 'COUNTER' }, processedAt: { gte: start, lt: end } }, _sum: { amountPaise: true }, _count: true }),
   ]);
   const by = (rows: typeof payments, m: PaymentMethod) => rows.find((r) => r.method === m)?._sum.amountPaise ?? 0;
   const methods = PAYMENT_METHODS.map((m) => ({ method: m, receivedPaise: by(payments, m), refundedPaise: by(refunds, m), expectedPaise: by(payments, m) - by(refunds, m) }));
@@ -311,6 +325,15 @@ export const billingService = {
   async addConsultationCharge(input: { visitId: string; staffCode: string; departmentCode: string | null; doctorName: string; createdById: string }, tx: Prisma.TransactionClient) {
     const existing = await tx.charge.findFirst({ where: { visitId: input.visitId, catalogueItem: { category: 'CONSULTATION' }, status: { not: 'VOID' } }, select: { id: true } });
     if (existing) return null;
+    // Prepaid online: the consultation was charged (and paid) at booking. Never charge it a second time.
+    const visit = await tx.visit.findUnique({ where: { id: input.visitId }, select: { appointmentId: true } });
+    if (visit?.appointmentId) {
+      const prepaid = await tx.charge.findFirst({ where: { appointmentId: visit.appointmentId, status: { not: 'VOID' } }, select: { id: true } });
+      if (prepaid) {
+        await this.attachPrepaidToVisit(visit.appointmentId, input.visitId, tx);
+        return null;
+      }
+    }
     const codes = [doctorConsultationCode(input.staffCode), ...(input.departmentCode ? [departmentConsultationCode(input.departmentCode)] : [])];
     const items = await tx.serviceCatalogue.findMany({ where: { code: { in: codes }, isActive: true }, select: { id: true, code: true, name: true, pricePaise: true, departmentId: true } });
     const item = items.find((i) => i.code === codes[0]) ?? items.find((i) => i.code === codes[1]);
@@ -388,26 +411,182 @@ export const billingService = {
     changed('charge', patientId);
   },
 
+  /* ================= Online prepayment of the consultation (called by the payments module) ================= */
+
+  /** The catalogue item a doctor's consultation is billed with (own item, else the department's), or null. */
+  async consultationItemFor(doctor: { staffCode: string; departmentCode: string | null }) {
+    const codes = [doctorConsultationCode(doctor.staffCode), ...(doctor.departmentCode ? [departmentConsultationCode(doctor.departmentCode)] : [])];
+    const items = await prisma.serviceCatalogue.findMany({ where: { code: { in: codes }, isActive: true }, select: { id: true, code: true, name: true, pricePaise: true, taxPercent: true, departmentId: true } });
+    const item = items.find((i) => i.code === codes[0]) ?? items.find((i) => i.code === codes[1]);
+    return item ? { ...item, amountPaise: item.pricePaise + lineTaxPaise(item.pricePaise, item.taxPercent) } : null;
+  },
+
+  /**
+   * Records a gateway-confirmed prepayment, in the booking transaction: the consultation charge (on the appointment —
+   * the visit does not exist yet), its own invoice, the ONLINE payment and its allocation. At check-in the invoice
+   * becomes the visit's bill, so tests and medicines are added to it and the consultation is never charged twice.
+   * Idempotent through the payment's idempotency key.
+   */
+  async recordOnlinePrepayment(
+    input: {
+      appointmentId: string; patientId: string; catalogueItemId: string; description: string; amountPaise: number;
+      method: PaymentMethod; provider: string | null; last4: string | null; reference: string; idempotencyKey: string; actorUserId: string;
+    },
+    tx: Prisma.TransactionClient,
+  ) {
+    assertPaise(input.amountPaise);
+    const prior = await tx.payment.findUnique({ where: { idempotencyKey: input.idempotencyKey }, select: { id: true, receiptNumber: true, allocations: { select: { invoiceId: true } } } });
+    if (prior) return { paymentId: prior.id, receiptNumber: prior.receiptNumber, invoiceId: prior.allocations[0]?.invoiceId ?? null };
+    const item = await tx.serviceCatalogue.findUniqueOrThrow({ where: { id: input.catalogueItemId }, select: { id: true, departmentId: true, taxPercent: true } });
+    // The amount paid includes any tax on the item; split it back into price + tax so the line adds up exactly.
+    const netPaise = Math.round((input.amountPaise * 100) / (100 + item.taxPercent));
+    const charge = await tx.charge.create({
+      data: {
+        appointmentId: input.appointmentId, catalogueItemId: item.id, departmentId: item.departmentId, description: input.description,
+        quantity: 1, unitPricePaise: netPaise, totalPaise: netPaise, status: 'INVOICED',
+      },
+      select: { id: true },
+    });
+    const invoice = await tx.invoice.create({
+      data: { invoiceNumber: await nextNumber('INV', tx), appointmentId: input.appointmentId, patientId: input.patientId, status: 'ISSUED', issuedAt: new Date() },
+      select: { id: true, invoiceNumber: true },
+    });
+    await tx.invoiceLine.create({
+      data: {
+        invoiceId: invoice.id, chargeId: charge.id, departmentId: item.departmentId, description: input.description, quantity: 1,
+        unitPricePaise: netPaise, totalPaise: netPaise, taxPercent: item.taxPercent, taxPaise: input.amountPaise - netPaise,
+      },
+    });
+    const payment = await tx.payment.create({
+      data: {
+        receiptNumber: await nextNumber('RCPT', tx), patientId: input.patientId, method: input.method, channel: 'ONLINE', status: 'CONFIRMED',
+        amountPaise: input.amountPaise, reference: input.reference, provider: input.provider, last4: input.last4, idempotencyKey: input.idempotencyKey,
+        allocations: { create: [{ invoiceId: invoice.id, amountPaise: input.amountPaise }] },
+      },
+      select: { id: true, receiptNumber: true },
+    });
+    await recomputeInvoice(tx, invoice.id);
+    const totals = await tx.invoice.findUniqueOrThrow({ where: { id: invoice.id }, select: { totalPaise: true } });
+    await tx.invoice.update({ where: { id: invoice.id }, data: { paidPaise: input.amountPaise, status: invoiceStatusFor(totals.totalPaise, input.amountPaise) } });
+    await auditService.record({
+      actorId: input.actorUserId, action: AuditAction.PAYMENT_RECORDED, entity: 'payments', entityId: payment.id, patientId: input.patientId,
+      metadata: { receiptNumber: payment.receiptNumber, channel: 'ONLINE', method: input.method, provider: input.provider, amountPaise: input.amountPaise, invoices: [invoice.invoiceNumber] },
+    }, tx);
+    return { paymentId: payment.id, receiptNumber: payment.receiptNumber, invoiceId: invoice.id };
+  },
+
+  /** Check-in: the prepaid consultation and its invoice now belong to the visit (one bill per visit). */
+  async attachPrepaidToVisit(appointmentId: string, visitId: string, tx: Prisma.TransactionClient) {
+    const inv = await tx.invoice.findUnique({ where: { appointmentId }, select: { id: true, visitId: true } });
+    if (!inv || inv.visitId === visitId) return;
+    await lockVisitInvoice(tx, visitId);
+    if (await tx.invoice.findUnique({ where: { visitId }, select: { id: true } })) return; // the visit already has a bill (cannot happen at check-in)
+    await tx.invoice.update({ where: { id: inv.id }, data: { visitId } });
+    await tx.charge.updateMany({ where: { appointmentId, visitId: null }, data: { visitId } });
+  },
+
+  /** Reschedule: the prepayment follows the booking to its new appointment. */
+  async movePrepaid(fromAppointmentId: string, toAppointmentId: string, tx: Prisma.TransactionClient) {
+    await tx.invoice.updateMany({ where: { appointmentId: fromAppointmentId }, data: { appointmentId: toAppointmentId } });
+    await tx.charge.updateMany({ where: { appointmentId: fromAppointmentId }, data: { appointmentId: toAppointmentId } });
+  },
+
+  /** The online payment that can still be refunded for a booking (cancelled prepaid appointment), or null. */
+  async prepaidRefundable(appointmentId: string) {
+    const inv = await prisma.invoice.findUnique({
+      where: { appointmentId },
+      select: {
+        id: true,
+        allocations: { where: { payment: { channel: 'ONLINE', status: 'CONFIRMED' } }, select: { amountPaise: true, payment: { select: { id: true, method: true, reference: true } } } },
+        refunds: { where: { status: { in: ['REQUESTED', ...MONEY_BACK] } }, select: { amountPaise: true } },
+      },
+    });
+    const alloc = inv?.allocations[0];
+    if (!inv || !alloc) return null;
+    const amountPaise = alloc.amountPaise - sum(inv.refunds, (r) => r.amountPaise);
+    return amountPaise > 0 ? { invoiceId: inv.id, paymentId: alloc.payment.id, method: alloc.payment.method, providerPaymentId: alloc.payment.reference, amountPaise } : null;
+  },
+
+  /**
+   * Records the refund of a cancelled prepaid booking. `gatewayRefundId` set → the gateway already refunded it: status
+   * REFUNDED, the charge and invoice are voided (the consultation will not happen). Null → the gateway refund failed:
+   * a REQUESTED refund lands in the accounts queue to be paid out by hand.
+   */
+  async recordOnlineRefund(input: { appointmentId: string; gatewayRefundId: string | null; reason: string; actorUserId: string; ip?: string | null }) {
+    const refundable = await this.prepaidRefundable(input.appointmentId);
+    if (!refundable) return null;
+    const id = await prisma.$transaction(async (tx) => {
+      await lockInvoices(tx, [refundable.invoiceId]);
+      const done = input.gatewayRefundId !== null;
+      const r = await tx.refund.create({
+        data: {
+          paymentId: refundable.paymentId, invoiceId: refundable.invoiceId, amountPaise: refundable.amountPaise, method: refundable.method, reason: input.reason,
+          status: done ? 'REFUNDED' : 'REQUESTED', processedAt: done ? new Date() : null, decisionNote: done ? `Gateway refund ${input.gatewayRefundId}` : 'Gateway refund failed — pay out manually',
+        },
+        select: { id: true, payment: { select: { patientId: true, receiptNumber: true } } },
+      });
+      if (done) {
+        const inv = await tx.invoice.findUniqueOrThrow({ where: { id: refundable.invoiceId }, select: { totalPaise: true, paidPaise: true } });
+        await tx.charge.updateMany({ where: { appointmentId: input.appointmentId, status: { not: 'VOID' } }, data: { status: 'VOID' } });
+        await tx.invoice.update({ where: { id: refundable.invoiceId }, data: { paidPaise: inv.paidPaise - refundable.amountPaise, status: 'VOID' } });
+      }
+      await auditService.record({
+        actorId: input.actorUserId, action: done ? AuditAction.REFUND_PROCESSED : AuditAction.REFUND_REQUESTED, entity: 'refunds', entityId: r.id,
+        patientId: r.payment.patientId, reason: input.reason, ip: input.ip ?? null,
+        metadata: { receiptNumber: r.payment.receiptNumber, amountPaise: refundable.amountPaise, channel: 'ONLINE', gatewayRefundId: input.gatewayRefundId },
+      }, tx);
+      return r.id;
+    });
+    changed('refund');
+    return (await this.refunds({ ids: [id] }))[0]!;
+  },
+
+  /** Prepaid state per appointment id (appointments without an online payment are absent: pay at hospital). */
+  async prepaidStatus(appointmentIds: string[]) {
+    const out = new Map<string, PrepaidState>();
+    if (!appointmentIds.length) return out;
+    const rows = await prisma.invoice.findMany({
+      where: { appointmentId: { in: [...new Set(appointmentIds)] } },
+      select: {
+        appointmentId: true,
+        allocations: { where: { payment: { channel: 'ONLINE', status: 'CONFIRMED' } }, select: { id: true } },
+        refunds: { where: { status: 'REFUNDED' }, select: { id: true } },
+      },
+    });
+    for (const r of rows) {
+      if (!r.appointmentId || !r.allocations.length) continue;
+      out.set(r.appointmentId, r.refunds.length ? 'REFUNDED' : 'PAID_ONLINE');
+    }
+    return out;
+  },
+
   /* ================= Invoices ================= */
 
   /** One invoice with its lines (each tagged with its department), payments and refunds. */
   async invoice(id: string) {
-    await syncPendingCharges((await prisma.invoice.findUnique({ where: { id }, select: { visitId: true } }).then((i) => (i ? [i.visitId] : []))));
+    await syncPendingCharges((await prisma.invoice.findUnique({ where: { id }, select: { visitId: true } }).then((i) => (i?.visitId ? [i.visitId] : []))));
     const row = await prisma.invoice.findUnique({
       where: { id },
       select: {
         ...invoiceSelect,
-        lines: { orderBy: { id: 'asc' }, select: { id: true, description: true, quantity: true, unitPricePaise: true, discountPaise: true, totalPaise: true, taxPercent: true, taxPaise: true, department: { select: { code: true, name: true } }, charge: { select: { createdAt: true } } } },
-        allocations: { orderBy: { createdAt: 'asc' }, select: { amountPaise: true, payment: { select: { id: true, receiptNumber: true, method: true, receivedAt: true } } } },
+        lines: { orderBy: { id: 'asc' }, select: { id: true, description: true, quantity: true, unitPricePaise: true, discountPaise: true, totalPaise: true, taxPercent: true, taxPaise: true, department: { select: { code: true, name: true } }, charge: { select: { createdAt: true, appointmentId: true } } } },
         refunds: { orderBy: { createdAt: 'asc' }, select: { id: true, amountPaise: true, status: true, reason: true, createdAt: true } },
       },
     });
     if (!row) throw AppError.notFound('Invoice not found');
+    const payments = await prisma.paymentAllocation.findMany({
+      where: { invoiceId: id }, orderBy: { createdAt: 'asc' },
+      select: { amountPaise: true, payment: { select: { id: true, receiptNumber: true, method: true, channel: true, receivedAt: true } } },
+    });
     const [base] = await presentInvoices([row]);
     return {
       ...base!,
-      lines: row.lines.map((l) => ({ id: l.id, description: l.description, department: l.department, quantity: l.quantity, unitPricePaise: l.unitPricePaise, discountPaise: l.discountPaise, totalPaise: l.totalPaise, taxPercent: l.taxPercent, taxPaise: l.taxPaise, chargedAt: l.charge?.createdAt ?? null })),
-      payments: row.allocations.map((a) => ({ paymentId: a.payment.id, receiptNumber: a.payment.receiptNumber, method: a.payment.method, receivedAt: a.payment.receivedAt, amountPaise: a.amountPaise })),
+      lines: row.lines.map((l) => ({
+        id: l.id, description: l.description, department: l.department, quantity: l.quantity, unitPricePaise: l.unitPricePaise, discountPaise: l.discountPaise, totalPaise: l.totalPaise, taxPercent: l.taxPercent, taxPaise: l.taxPaise, chargedAt: l.charge?.createdAt ?? null,
+        /** Consultation prepaid online at booking: the counter shows it as "Paid online" and collects only the rest. */
+        paidOnline: !!l.charge?.appointmentId && base!.paidOnlinePaise > 0,
+      })),
+      payments: payments.map((a) => ({ paymentId: a.payment.id, receiptNumber: a.payment.receiptNumber, method: a.payment.method, channel: a.payment.channel, receivedAt: a.payment.receivedAt, amountPaise: a.amountPaise })),
       refunds: row.refunds,
     };
   },
@@ -565,7 +744,7 @@ export const billingService = {
       await tx.$queryRaw`SELECT id FROM payments WHERE id = ${input.paymentId}::uuid FOR UPDATE`;
       const p = await tx.payment.findUnique({
         where: { id: input.paymentId },
-        select: { id: true, receiptNumber: true, patientId: true, method: true, status: true, allocations: { select: { invoiceId: true, amountPaise: true } }, refunds: { where: { status: { in: ['REQUESTED', 'APPROVED'] } }, select: { invoiceId: true, amountPaise: true } } },
+        select: { id: true, receiptNumber: true, patientId: true, method: true, status: true, allocations: { select: { invoiceId: true, amountPaise: true } }, refunds: { where: { status: { in: ['REQUESTED', ...MONEY_BACK] } }, select: { invoiceId: true, amountPaise: true } } },
       });
       if (!p) throw AppError.notFound('Receipt not found');
       if (p.status !== 'CONFIRMED') throw new AppError(409, 'PAYMENT_NOT_CONFIRMED', 'Only confirmed payments can be refunded');
@@ -696,21 +875,24 @@ export const billingService = {
     const [billed, received, refunded] = await Promise.all([
       prisma.$queryRaw<{ day: string; paise: bigint }[]>`SELECT ${DAY_SQL(Prisma.sql`created_at`)} AS day, SUM(total_paise)::bigint AS paise FROM charges WHERE created_at >= ${start} AND created_at < ${end} AND status <> 'VOID' GROUP BY 1`,
       prisma.$queryRaw<{ day: string; paise: bigint }[]>`SELECT ${DAY_SQL(Prisma.sql`received_at`)} AS day, SUM(amount_paise)::bigint AS paise FROM payments WHERE received_at >= ${start} AND received_at < ${end} AND status = 'CONFIRMED' GROUP BY 1`,
-      prisma.$queryRaw<{ day: string; paise: bigint }[]>`SELECT ${DAY_SQL(Prisma.sql`processed_at`)} AS day, SUM(amount_paise)::bigint AS paise FROM refunds WHERE processed_at >= ${start} AND processed_at < ${end} AND status = 'APPROVED' GROUP BY 1`,
+      prisma.$queryRaw<{ day: string; paise: bigint }[]>`SELECT ${DAY_SQL(Prisma.sql`processed_at`)} AS day, SUM(amount_paise)::bigint AS paise FROM refunds WHERE processed_at >= ${start} AND processed_at < ${end} AND status IN ('APPROVED', 'REFUNDED') GROUP BY 1`,
     ]);
     const map = (rows: { day: string; paise: bigint }[]) => new Map(rows.map((r) => [r.day, Number(r.paise)]));
     return { billed: map(billed), received: map(received), refunded: map(refunded) };
   },
 
-  /** Collections by method, tax billed and refunds in [start, end). */
+  /** Collections by method and by channel (counter vs online), tax billed and refunds in [start, end). */
   async collections(start: Date, end: Date) {
-    const [byMethod, refunds, tax] = await Promise.all([
+    const [byMethod, byChannel, refunds, tax] = await Promise.all([
       prisma.payment.groupBy({ by: ['method'], where: { status: 'CONFIRMED', receivedAt: { gte: start, lt: end } }, _sum: { amountPaise: true }, _count: true }),
+      prisma.payment.groupBy({ by: ['channel'], where: { status: 'CONFIRMED', receivedAt: { gte: start, lt: end } }, _sum: { amountPaise: true }, _count: true }),
       prisma.refund.groupBy({ by: ['status'], where: { createdAt: { gte: start, lt: end } }, _sum: { amountPaise: true }, _count: true }),
       prisma.invoiceLine.aggregate({ where: { charge: { createdAt: { gte: start, lt: end }, status: { not: 'VOID' } } }, _sum: { taxPaise: true } }),
     ]);
+    const methodsSeen = [...PAYMENT_METHODS, ...byMethod.map((r) => r.method).filter((m) => !(PAYMENT_METHODS as readonly PaymentMethod[]).includes(m))];
     return {
-      methods: PAYMENT_METHODS.map((m) => ({ method: m, amountPaise: byMethod.find((r) => r.method === m)?._sum.amountPaise ?? 0, count: byMethod.find((r) => r.method === m)?._count ?? 0 })),
+      methods: methodsSeen.map((m) => ({ method: m, amountPaise: byMethod.find((r) => r.method === m)?._sum.amountPaise ?? 0, count: byMethod.find((r) => r.method === m)?._count ?? 0 })),
+      channels: (['COUNTER', 'ONLINE'] as const).map((c) => ({ channel: c, amountPaise: byChannel.find((r) => r.channel === c)?._sum.amountPaise ?? 0, count: byChannel.find((r) => r.channel === c)?._count ?? 0 })),
       refunds: Object.fromEntries(refunds.map((r) => [r.status, { amountPaise: r._sum.amountPaise ?? 0, count: r._count }])) as Partial<Record<RefundStatus, { amountPaise: number; count: number }>>,
       taxBilledPaise: tax._sum.taxPaise ?? 0,
     };
@@ -720,7 +902,7 @@ export const billingService = {
   async transactions(start: Date, end: Date, take = 1000) {
     const rows = await prisma.payment.findMany({ where: { receivedAt: { gte: start, lt: end } }, orderBy: { receivedAt: 'desc' }, take, select: paymentSelect });
     return (await presentPayments(rows)).map((p) => ({
-      id: p.id, receiptNumber: p.receiptNumber, receivedAt: p.receivedAt, method: p.method, status: p.status, amountPaise: p.amountPaise, reference: p.reference,
+      id: p.id, receiptNumber: p.receiptNumber, receivedAt: p.receivedAt, method: p.method, channel: p.channel, provider: p.provider, status: p.status, amountPaise: p.amountPaise, reference: p.reference,
       refundedPaise: p.refundedPaise, patient: p.patient, receivedBy: p.receivedBy?.name ?? null, invoices: p.allocations.map((a) => a.invoiceNumber),
     }));
   },

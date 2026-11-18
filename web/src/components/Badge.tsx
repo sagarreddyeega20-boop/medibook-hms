@@ -16,7 +16,10 @@ export const STATUS_TONES: Record<string, BadgeTone> = {
   ORDERED: 'info', SCHEDULED: 'neutral', IN_PROGRESS: 'warning', RESULT_READY: 'success',
   // money
   DRAFT: 'neutral', ISSUED: 'pending', PARTIALLY_PAID: 'pending', PAID: 'success', VOID: 'neutral',
-  PENDING: 'pending', FAILED: 'danger', REFUNDED: 'neutral', PAY_AT_CLINIC: 'neutral',
+  PENDING: 'pending', FAILED: 'danger', REFUNDED: 'info', PAY_AT_CLINIC: 'neutral',
+  // online prepayment: how a booking is paid, gateway order states, payment channels
+  PAID_ONLINE: 'success', PAY_AT_HOSPITAL: 'pending', PROCESSING: 'warning', EXPIRED: 'neutral', COUNTER: 'neutral',
+  NETBANKING: 'info', WALLET: 'info', REFUND_PROCESSED: 'info', ONLINE_PAYMENT_FAILED: 'warning',
   // doctor live status
   AVAILABLE: 'success', RUNNING_LATE: 'danger', OFF_DUTY: 'neutral', ON_LEAVE: 'neutral',
   // staff accounts
@@ -74,6 +77,12 @@ export const STATUS_LABELS: Record<string, string> = {
   ISSUED: 'Unpaid',
   REQUESTED: 'Refund requested',
   UPI: 'UPI',
+  PAID_ONLINE: 'Paid online',
+  PAY_AT_HOSPITAL: 'Pay at hospital',
+  NETBANKING: 'Net banking',
+  COUNTER: 'At the counter',
+  REFUND_PROCESSED: 'Refunded online',
+  ONLINE_PAYMENT_FAILED: 'Online payment failed',
   BALANCED: 'Cash matches',
   SHORT: 'Cash short',
   OVER: 'Cash over',

@@ -17,6 +17,7 @@ export default defineConfig({
       CORS_ORIGIN: 'http://localhost:5173',
       // Tests must never send real email (mailer.ts also forces console when NODE_ENV=test).
       MAIL_TRANSPORT: 'console',
+      PAYMENT_SIM_DELAY_MS: '30',
       SMTP_USER: '',
       SMTP_PASS: '',
       // The suites log in hundreds of times from 127.0.0.1; src/security.test.ts tests the limiter itself.

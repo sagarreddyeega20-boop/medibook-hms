@@ -93,7 +93,7 @@ enum QueueEventType {
 enum VisitType {
   OPD
   WALK_IN
-  IPD       // reserved: inpatient release
+  IPD // reserved: inpatient release
   EMERGENCY // reserved: hospital-wide release
 }
 
@@ -174,6 +174,23 @@ enum PaymentMethod {
   CASH
   UPI
   CARD
+  NETBANKING // online only
+  WALLET // online only
+}
+
+/// Where a payment was taken: at the billing counter, or online through the payment gateway (prepaid booking).
+enum PaymentChannel {
+  COUNTER
+  ONLINE
+}
+
+/// Online checkout for one held slot (module: payments). PAID creates the appointment, charge, invoice and payment.
+enum OnlineOrderStatus {
+  CREATED // waiting for the patient to pay
+  PROCESSING // sent to the gateway, waiting for its webhook
+  FAILED // last attempt failed; the patient may retry while the hold lasts
+  PAID // webhook confirmed; appointment booked
+  EXPIRED // hold ran out before payment (any captured amount is refunded)
 }
 
 enum PaymentStatus {
@@ -187,6 +204,7 @@ enum RefundStatus {
   APPROVED
   PAID
   REJECTED
+  REFUNDED // online refund processed by the gateway (prepaid booking cancelled)
 }
 
 enum OtpPurpose {
@@ -212,27 +230,27 @@ enum NotificationStatus {
 // =====================================================================
 
 model User {
-  id                 String     @id @default(uuid()) @db.Uuid
-  email              String     @unique
-  passwordHash       String?    @map("password_hash") // null for patients (OTP-only)
-  status             UserStatus @default(ACTIVE)
-  failedLoginCount   Int        @default(0) @map("failed_login_count")
-  lockedUntil        DateTime?  @map("locked_until") @db.Timestamptz(3)
-  lastLoginAt        DateTime?  @map("last_login_at") @db.Timestamptz(3)
-  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id               String     @id @default(uuid()) @db.Uuid
+  email            String     @unique
+  passwordHash     String?    @map("password_hash") // null for patients (OTP-only)
+  status           UserStatus @default(ACTIVE)
+  failedLoginCount Int        @default(0) @map("failed_login_count")
+  lockedUntil      DateTime?  @map("locked_until") @db.Timestamptz(3)
+  lastLoginAt      DateTime?  @map("last_login_at") @db.Timestamptz(3)
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  roles              UserRole[]
-  staff              Staff?
-  patient            Patient?   @relation("PatientAccount")
-  otpRequests        OtpRequest[]
-  notifications      Notification[]
-  auditLogs          AuditLog[]
-  accessOverrides    AccessOverride[] @relation("OverrideUser")
-  approvedOverrides  AccessOverride[] @relation("OverrideApprover")
-  createdUsers       User[]     @relation("UserCreatedBy")
-  createdBy          User?      @relation("UserCreatedBy", fields: [createdById], references: [id])
-  createdById        String?    @map("created_by_id") @db.Uuid
+  roles             UserRole[]
+  staff             Staff?
+  patient           Patient?         @relation("PatientAccount")
+  otpRequests       OtpRequest[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+  accessOverrides   AccessOverride[] @relation("OverrideUser")
+  approvedOverrides AccessOverride[] @relation("OverrideApprover")
+  createdUsers      User[]           @relation("UserCreatedBy")
+  createdBy         User?            @relation("UserCreatedBy", fields: [createdById], references: [id])
+  createdById       String?          @map("created_by_id") @db.Uuid
 
   @@map("users")
 }
@@ -286,100 +304,100 @@ model Department {
   createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  staff            Staff[]
-  visits           Visit[]
-  appointments     Appointment[]
-  ordersTargeted   Order[]            @relation("OrderTargetDepartment")
-  referralsTo      Referral[]         @relation("ReferralToDepartment")
-  catalogueItems   ServiceCatalogue[]
-  charges          Charge[]
-  invoiceLines     InvoiceLine[]
+  staff          Staff[]
+  visits         Visit[]
+  appointments   Appointment[]
+  ordersTargeted Order[]            @relation("OrderTargetDepartment")
+  referralsTo    Referral[]         @relation("ReferralToDepartment")
+  catalogueItems ServiceCatalogue[]
+  charges        Charge[]
+  invoiceLines   InvoiceLine[]
 
   @@map("departments")
 }
 
 model Staff {
-  id                    String      @id @default(uuid()) @db.Uuid
-  userId                String      @unique @map("user_id") @db.Uuid
-  staffCode             String      @unique @map("staff_code") // hospital-issued staff ID
-  fullName              String      @map("full_name")
-  phone                 String?
-  designation           String?
-  specialty             String?
-  departmentId          String?     @map("department_id") @db.Uuid
-  consultationFeePaise  Int?        @map("consultation_fee_paise")
-  slotMinutes           Int?        @default(15) @map("slot_minutes")
-  isActive              Boolean     @default(true) @map("is_active")
-  createdAt             DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt             DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                   String   @id @default(uuid()) @db.Uuid
+  userId               String   @unique @map("user_id") @db.Uuid
+  staffCode            String   @unique @map("staff_code") // hospital-issued staff ID
+  fullName             String   @map("full_name")
+  phone                String?
+  designation          String?
+  specialty            String?
+  departmentId         String?  @map("department_id") @db.Uuid
+  consultationFeePaise Int?     @map("consultation_fee_paise")
+  slotMinutes          Int?     @default(15) @map("slot_minutes")
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user                  User        @relation(fields: [userId], references: [id])
-  department            Department? @relation(fields: [departmentId], references: [id])
+  user       User        @relation(fields: [userId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
 
-  schedules             DoctorSchedule[]
-  leaves                DoctorLeave[]
-  appointments          Appointment[]
-  visits                Visit[]
-  clinicalNotes         ClinicalNote[]
-  vitalsRecorded        Vital[]
-  ordersPlaced          Order[]         @relation("OrderingDoctor")
-  ordersTargeted        Order[]         @relation("OrderTargetDoctor")
-  ordersAssigned        Order[]         @relation("OrderAssignee")
-  resultsReported       OrderResult[]
-  referralsMade         Referral[]      @relation("ReferralFrom")
-  referralsReceived     Referral[]      @relation("ReferralTo")
-  prescriptions         Prescription[]
-  dispensations         Dispensation[]
-  stockMovements        StockMovement[]
-  queueEvents           QueueEvent[]
-  paymentsReceived      Payment[]
-  refundsApproved       Refund[]        @relation("RefundApprovedBy")
-  refundsRequested      Refund[]        @relation("RefundRequestedBy")
-  cashReconciliations   CashReconciliation[]
-  invoicesIssued        Invoice[]
-  chargesCreated        Charge[]
-  consentsRecorded      Consent[]
-  patientsRegistered    Patient[]
+  schedules           DoctorSchedule[]
+  leaves              DoctorLeave[]
+  appointments        Appointment[]
+  visits              Visit[]
+  clinicalNotes       ClinicalNote[]
+  vitalsRecorded      Vital[]
+  ordersPlaced        Order[]              @relation("OrderingDoctor")
+  ordersTargeted      Order[]              @relation("OrderTargetDoctor")
+  ordersAssigned      Order[]              @relation("OrderAssignee")
+  resultsReported     OrderResult[]
+  referralsMade       Referral[]           @relation("ReferralFrom")
+  referralsReceived   Referral[]           @relation("ReferralTo")
+  prescriptions       Prescription[]
+  dispensations       Dispensation[]
+  stockMovements      StockMovement[]
+  queueEvents         QueueEvent[]
+  paymentsReceived    Payment[]
+  refundsApproved     Refund[]             @relation("RefundApprovedBy")
+  refundsRequested    Refund[]             @relation("RefundRequestedBy")
+  cashReconciliations CashReconciliation[]
+  invoicesIssued      Invoice[]
+  chargesCreated      Charge[]
+  consentsRecorded    Consent[]
+  patientsRegistered  Patient[]
 
   @@index([departmentId])
   @@map("staff")
 }
 
 model Patient {
-  id               String    @id @default(uuid()) @db.Uuid
-  mrn              String    @unique // hospital patient ID
-  userId           String?   @unique @map("user_id") @db.Uuid // portal account (optional)
-  firstName        String    @map("first_name")
-  lastName         String?   @map("last_name")
-  dateOfBirth      DateTime? @map("date_of_birth") @db.Date
-  gender           Gender    @default(UNKNOWN)
-  phone            String?
-  email            String?
-  address          String?
-  bloodGroup       String?   @map("blood_group")
-  allergies        String?
-  emergencyContactName  String? @map("emergency_contact_name")
-  emergencyContactPhone String? @map("emergency_contact_phone")
-  registeredById   String?   @map("registered_by_id") @db.Uuid
-  registrationSource BookingSource @default(RECEPTION) @map("registration_source")
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                    String        @id @default(uuid()) @db.Uuid
+  mrn                   String        @unique // hospital patient ID
+  userId                String?       @unique @map("user_id") @db.Uuid // portal account (optional)
+  firstName             String        @map("first_name")
+  lastName              String?       @map("last_name")
+  dateOfBirth           DateTime?     @map("date_of_birth") @db.Date
+  gender                Gender        @default(UNKNOWN)
+  phone                 String?
+  email                 String?
+  address               String?
+  bloodGroup            String?       @map("blood_group")
+  allergies             String?
+  emergencyContactName  String?       @map("emergency_contact_name")
+  emergencyContactPhone String?       @map("emergency_contact_phone")
+  registeredById        String?       @map("registered_by_id") @db.Uuid
+  registrationSource    BookingSource @default(RECEPTION) @map("registration_source")
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user             User?     @relation("PatientAccount", fields: [userId], references: [id])
-  registeredBy     Staff?    @relation(fields: [registeredById], references: [id])
-  familyMembers    FamilyMember[] @relation("FamilyAccountHolder")
-  familyOf         FamilyMember[] @relation("FamilyMemberPatient")
-  consents         Consent[]
-  appointments     Appointment[]
-  visits           Visit[]
-  orders           Order[]
-  referrals        Referral[]
-  prescriptions    Prescription[]
-  invoices         Invoice[]
-  payments         Payment[]
-  auditLogs        AuditLog[]
-  accessOverrides  AccessOverride[]
-  queueEvents      QueueEvent[]
+  user            User?            @relation("PatientAccount", fields: [userId], references: [id])
+  registeredBy    Staff?           @relation(fields: [registeredById], references: [id])
+  familyMembers   FamilyMember[]   @relation("FamilyAccountHolder")
+  familyOf        FamilyMember[]   @relation("FamilyMemberPatient")
+  consents        Consent[]
+  appointments    Appointment[]
+  visits          Visit[]
+  orders          Order[]
+  referrals       Referral[]
+  prescriptions   Prescription[]
+  invoices        Invoice[]
+  payments        Payment[]
+  auditLogs       AuditLog[]
+  accessOverrides AccessOverride[]
+  queueEvents     QueueEvent[]
 
   // duplicate detection: same name + date of birth + phone
   @@index([firstName, lastName, dateOfBirth, phone], map: "patients_duplicate_check_idx")
@@ -395,8 +413,8 @@ model FamilyMember {
   relationship     String
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  accountPatient   Patient  @relation("FamilyAccountHolder", fields: [accountPatientId], references: [id], onDelete: Cascade)
-  memberPatient    Patient  @relation("FamilyMemberPatient", fields: [memberPatientId], references: [id], onDelete: Cascade)
+  accountPatient Patient @relation("FamilyAccountHolder", fields: [accountPatientId], references: [id], onDelete: Cascade)
+  memberPatient  Patient @relation("FamilyMemberPatient", fields: [memberPatientId], references: [id], onDelete: Cascade)
 
   @@unique([accountPatientId, memberPatientId])
   @@map("family_members")
@@ -416,8 +434,8 @@ model Consent {
   withdrawnAt   DateTime?       @map("withdrawn_at") @db.Timestamptz(3)
   completedAt   DateTime?       @map("completed_at") @db.Timestamptz(3)
 
-  patient       Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  recordedBy    Staff?          @relation(fields: [recordedById], references: [id])
+  patient    Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recordedBy Staff?  @relation(fields: [recordedById], references: [id])
 
   @@index([patientId])
   @@map("consents")
@@ -439,7 +457,7 @@ model DoctorSchedule {
   isActive      Boolean   @default(true) @map("is_active")
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  doctor        Staff     @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  doctor Staff @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
   @@index([doctorId, dayOfWeek])
   @@map("doctor_schedules")
@@ -453,38 +471,40 @@ model DoctorLeave {
   reason    String?
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  doctor    Staff    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  doctor Staff @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
   @@index([doctorId, startsAt])
   @@map("doctor_leaves")
 }
 
 model Appointment {
-  id             String            @id @default(uuid()) @db.Uuid
-  ref            String            @unique // human booking reference, e.g. APT-000123 ("cancel APT-000123")
-  patientId      String            @map("patient_id") @db.Uuid
-  doctorId       String            @map("doctor_id") @db.Uuid
-  departmentId   String            @map("department_id") @db.Uuid
-  slotStart      DateTime          @map("slot_start") @db.Timestamptz(3)
-  slotEnd        DateTime          @map("slot_end") @db.Timestamptz(3)
-  status         AppointmentStatus @default(BOOKED)
-  source         BookingSource     @default(RECEPTION)
-  reason         String?
-  tokenNumber    Int?              @map("token_number")
-  rescheduledFromId String?        @map("rescheduled_from_id") @db.Uuid
-  cancelledAt    DateTime?         @map("cancelled_at") @db.Timestamptz(3)
-  cancelReason   String?           @map("cancel_reason")
-  checkedInAt    DateTime?         @map("checked_in_at") @db.Timestamptz(3)
-  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                String            @id @default(uuid()) @db.Uuid
+  ref               String            @unique // human booking reference, e.g. APT-000123 ("cancel APT-000123")
+  patientId         String            @map("patient_id") @db.Uuid
+  doctorId          String            @map("doctor_id") @db.Uuid
+  departmentId      String            @map("department_id") @db.Uuid
+  slotStart         DateTime          @map("slot_start") @db.Timestamptz(3)
+  slotEnd           DateTime          @map("slot_end") @db.Timestamptz(3)
+  status            AppointmentStatus @default(BOOKED)
+  source            BookingSource     @default(RECEPTION)
+  reason            String?
+  tokenNumber       Int?              @map("token_number")
+  rescheduledFromId String?           @map("rescheduled_from_id") @db.Uuid
+  cancelledAt       DateTime?         @map("cancelled_at") @db.Timestamptz(3)
+  cancelReason      String?           @map("cancel_reason")
+  checkedInAt       DateTime?         @map("checked_in_at") @db.Timestamptz(3)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  patient        Patient           @relation(fields: [patientId], references: [id])
-  doctor         Staff             @relation(fields: [doctorId], references: [id])
-  department     Department        @relation(fields: [departmentId], references: [id])
-  rescheduledFrom Appointment?     @relation("Reschedule", fields: [rescheduledFromId], references: [id])
-  rescheduledTo  Appointment[]     @relation("Reschedule")
-  visit          Visit?
-  queueEvents    QueueEvent[]
+  patient         Patient       @relation(fields: [patientId], references: [id])
+  doctor          Staff         @relation(fields: [doctorId], references: [id])
+  department      Department    @relation(fields: [departmentId], references: [id])
+  rescheduledFrom Appointment?  @relation("Reschedule", fields: [rescheduledFromId], references: [id])
+  rescheduledTo   Appointment[] @relation("Reschedule")
+  visit           Visit?
+  queueEvents     QueueEvent[]
+  charges         Charge[]
+  invoice         Invoice?
 
   // NOTE: uniqueness of (doctor_id, slot_start) for non-cancelled rows is a partial
   // unique index created in the migration: appointments_doctor_slot_active_uniq.
@@ -503,10 +523,10 @@ model QueueEvent {
   tokenNumber   Int?           @map("token_number")
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  appointment   Appointment?   @relation(fields: [appointmentId], references: [id])
-  visit         Visit?         @relation(fields: [visitId], references: [id])
-  patient       Patient        @relation(fields: [patientId], references: [id])
-  doctor        Staff?         @relation(fields: [doctorId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+  visit       Visit?       @relation(fields: [visitId], references: [id])
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  doctor      Staff?       @relation(fields: [doctorId], references: [id])
 
   @@index([doctorId, createdAt])
   @@map("queue_events")
@@ -517,26 +537,26 @@ model QueueEvent {
 // =====================================================================
 
 model Visit {
-  id            String      @id @default(uuid()) @db.Uuid
-  visitNumber   String      @unique @map("visit_number")
-  patientId     String      @map("patient_id") @db.Uuid
-  appointmentId String?     @unique @map("appointment_id") @db.Uuid // null for walk-ins
-  departmentId  String      @map("department_id") @db.Uuid
-  doctorId      String      @map("doctor_id") @db.Uuid
-  type          VisitType
-  status        VisitStatus @default(OPEN)
-  chiefComplaint String?    @map("chief_complaint")
-  tokenNumber   Int?        @map("token_number")
-  startedAt     DateTime    @default(now()) @map("started_at") @db.Timestamptz(3)
-  consultStartedAt DateTime? @map("consult_started_at") @db.Timestamptz(3)
-  endedAt       DateTime?   @map("ended_at") @db.Timestamptz(3)
-  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id               String      @id @default(uuid()) @db.Uuid
+  visitNumber      String      @unique @map("visit_number")
+  patientId        String      @map("patient_id") @db.Uuid
+  appointmentId    String?     @unique @map("appointment_id") @db.Uuid // null for walk-ins
+  departmentId     String      @map("department_id") @db.Uuid
+  doctorId         String      @map("doctor_id") @db.Uuid
+  type             VisitType
+  status           VisitStatus @default(OPEN)
+  chiefComplaint   String?     @map("chief_complaint")
+  tokenNumber      Int?        @map("token_number")
+  startedAt        DateTime    @default(now()) @map("started_at") @db.Timestamptz(3)
+  consultStartedAt DateTime?   @map("consult_started_at") @db.Timestamptz(3)
+  endedAt          DateTime?   @map("ended_at") @db.Timestamptz(3)
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  patient       Patient     @relation(fields: [patientId], references: [id])
-  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
-  department    Department  @relation(fields: [departmentId], references: [id])
-  doctor        Staff       @relation(fields: [doctorId], references: [id])
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+  department  Department   @relation(fields: [departmentId], references: [id])
+  doctor      Staff        @relation(fields: [doctorId], references: [id])
 
   clinicalNotes ClinicalNote[]
   vitals        Vital[]
@@ -545,8 +565,8 @@ model Visit {
   charges       Charge[]
   invoices      Invoice[]
   queueEvents   QueueEvent[]
-  referralsMade Referral[]  @relation("ReferralFromVisit")
-  referralsIn   Referral[]  @relation("ReferralToVisit")
+  referralsMade Referral[]     @relation("ReferralFromVisit")
+  referralsIn   Referral[]     @relation("ReferralToVisit")
 
   @@index([patientId, startedAt])
   @@index([doctorId, status])
@@ -555,22 +575,22 @@ model Visit {
 }
 
 model ClinicalNote {
-  id           String   @id @default(uuid()) @db.Uuid
-  visitId      String   @map("visit_id") @db.Uuid
-  authorId     String   @map("author_id") @db.Uuid
-  type         NoteType @default(CONSULTATION)
-  subjective   String?
-  objective    String?
-  assessment   String?
-  plan         String?
-  diagnosis    String?
-  diagnosisCode String? @map("diagnosis_code") // ICD-10 (optional)
-  body         String?
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id            String   @id @default(uuid()) @db.Uuid
+  visitId       String   @map("visit_id") @db.Uuid
+  authorId      String   @map("author_id") @db.Uuid
+  type          NoteType @default(CONSULTATION)
+  subjective    String?
+  objective     String?
+  assessment    String?
+  plan          String?
+  diagnosis     String?
+  diagnosisCode String?  @map("diagnosis_code") // ICD-10 (optional)
+  body          String?
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  visit        Visit    @relation(fields: [visitId], references: [id], onDelete: Cascade)
-  author       Staff    @relation(fields: [authorId], references: [id])
+  visit  Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  author Staff @relation(fields: [authorId], references: [id])
 
   @@index([visitId])
   @@map("clinical_notes")
@@ -578,21 +598,21 @@ model ClinicalNote {
 
 // Vitals hang from the visit (spec: "notes, vitals"). Added so the inpatient nurse station has a home.
 model Vital {
-  id             String   @id @default(uuid()) @db.Uuid
-  visitId        String   @map("visit_id") @db.Uuid
-  recordedById   String   @map("recorded_by_id") @db.Uuid
-  temperatureC   Decimal? @map("temperature_c") @db.Decimal(4, 1)
-  pulseBpm       Int?     @map("pulse_bpm")
-  systolicMmHg   Int?     @map("systolic_mmhg")
-  diastolicMmHg  Int?     @map("diastolic_mmhg")
-  respiratoryRate Int?    @map("respiratory_rate")
-  spo2Percent    Int?     @map("spo2_percent")
-  weightKg       Decimal? @map("weight_kg") @db.Decimal(5, 2)
-  heightCm       Decimal? @map("height_cm") @db.Decimal(5, 1)
-  recordedAt     DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  id              String   @id @default(uuid()) @db.Uuid
+  visitId         String   @map("visit_id") @db.Uuid
+  recordedById    String   @map("recorded_by_id") @db.Uuid
+  temperatureC    Decimal? @map("temperature_c") @db.Decimal(4, 1)
+  pulseBpm        Int?     @map("pulse_bpm")
+  systolicMmHg    Int?     @map("systolic_mmhg")
+  diastolicMmHg   Int?     @map("diastolic_mmhg")
+  respiratoryRate Int?     @map("respiratory_rate")
+  spo2Percent     Int?     @map("spo2_percent")
+  weightKg        Decimal? @map("weight_kg") @db.Decimal(5, 2)
+  heightCm        Decimal? @map("height_cm") @db.Decimal(5, 1)
+  recordedAt      DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
 
-  visit          Visit    @relation(fields: [visitId], references: [id], onDelete: Cascade)
-  recordedBy     Staff    @relation(fields: [recordedById], references: [id])
+  visit      Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  recordedBy Staff @relation(fields: [recordedById], references: [id])
 
   @@index([visitId])
   @@map("vitals")
@@ -622,18 +642,18 @@ model Order {
   createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  visit              Visit         @relation(fields: [visitId], references: [id])
-  patient            Patient       @relation(fields: [patientId], references: [id])
-  orderingDoctor     Staff         @relation("OrderingDoctor", fields: [orderingDoctorId], references: [id])
-  targetDepartment   Department    @relation("OrderTargetDepartment", fields: [targetDepartmentId], references: [id])
-  targetDoctor       Staff?        @relation("OrderTargetDoctor", fields: [targetDoctorId], references: [id])
-  assignedTo         Staff?        @relation("OrderAssignee", fields: [assignedToId], references: [id])
-  catalogueItem      ServiceCatalogue? @relation(fields: [catalogueItemId], references: [id])
+  visit            Visit             @relation(fields: [visitId], references: [id])
+  patient          Patient           @relation(fields: [patientId], references: [id])
+  orderingDoctor   Staff             @relation("OrderingDoctor", fields: [orderingDoctorId], references: [id])
+  targetDepartment Department        @relation("OrderTargetDepartment", fields: [targetDepartmentId], references: [id])
+  targetDoctor     Staff?            @relation("OrderTargetDoctor", fields: [targetDoctorId], references: [id])
+  assignedTo       Staff?            @relation("OrderAssignee", fields: [assignedToId], references: [id])
+  catalogueItem    ServiceCatalogue? @relation(fields: [catalogueItemId], references: [id])
 
-  results            OrderResult[]
-  referral           Referral?
-  prescription       Prescription?
-  charges            Charge[]
+  results      OrderResult[]
+  referral     Referral?
+  prescription Prescription?
+  charges      Charge[]
 
   @@index([targetDepartmentId, type, status])
   @@index([patientId])
@@ -646,13 +666,13 @@ model OrderResult {
   orderId      String   @map("order_id") @db.Uuid
   reportedById String   @map("reported_by_id") @db.Uuid
   summary      String?
-  values       Json?    // structured results, e.g. [{ name, value, unit, range, flag }]
+  values       Json? // structured results, e.g. [{ name, value, unit, range, flag }]
   fileUrl      String?  @map("file_url")
   isAbnormal   Boolean  @default(false) @map("is_abnormal")
   reportedAt   DateTime @default(now()) @map("reported_at") @db.Timestamptz(3)
 
-  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  reportedBy   Staff    @relation(fields: [reportedById], references: [id])
+  order      Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reportedBy Staff @relation(fields: [reportedById], references: [id])
 
   @@index([orderId])
   @@map("order_results")
@@ -660,25 +680,25 @@ model OrderResult {
 
 // A referral is an Order of type REFERRAL; this row holds referral-specific detail.
 model Referral {
-  id               String      @id @default(uuid()) @db.Uuid
-  orderId          String      @unique @map("order_id") @db.Uuid
-  patientId        String      @map("patient_id") @db.Uuid
-  fromVisitId      String      @map("from_visit_id") @db.Uuid
-  fromDoctorId     String      @map("from_doctor_id") @db.Uuid
-  toDepartmentId   String      @map("to_department_id") @db.Uuid
-  toDoctorId       String?     @map("to_doctor_id") @db.Uuid
-  toVisitId        String?     @map("to_visit_id") @db.Uuid // visit created when referral is seen
-  reason           String
-  response         String?
-  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  id             String   @id @default(uuid()) @db.Uuid
+  orderId        String   @unique @map("order_id") @db.Uuid
+  patientId      String   @map("patient_id") @db.Uuid
+  fromVisitId    String   @map("from_visit_id") @db.Uuid
+  fromDoctorId   String   @map("from_doctor_id") @db.Uuid
+  toDepartmentId String   @map("to_department_id") @db.Uuid
+  toDoctorId     String?  @map("to_doctor_id") @db.Uuid
+  toVisitId      String?  @map("to_visit_id") @db.Uuid // visit created when referral is seen
+  reason         String
+  response       String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  order            Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  patient          Patient     @relation(fields: [patientId], references: [id])
-  fromVisit        Visit       @relation("ReferralFromVisit", fields: [fromVisitId], references: [id])
-  fromDoctor       Staff       @relation("ReferralFrom", fields: [fromDoctorId], references: [id])
-  toDepartment     Department  @relation("ReferralToDepartment", fields: [toDepartmentId], references: [id])
-  toDoctor         Staff?      @relation("ReferralTo", fields: [toDoctorId], references: [id])
-  toVisit          Visit?      @relation("ReferralToVisit", fields: [toVisitId], references: [id])
+  order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  patient      Patient    @relation(fields: [patientId], references: [id])
+  fromVisit    Visit      @relation("ReferralFromVisit", fields: [fromVisitId], references: [id])
+  fromDoctor   Staff      @relation("ReferralFrom", fields: [fromDoctorId], references: [id])
+  toDepartment Department @relation("ReferralToDepartment", fields: [toDepartmentId], references: [id])
+  toDoctor     Staff?     @relation("ReferralTo", fields: [toDoctorId], references: [id])
+  toVisit      Visit?     @relation("ReferralToVisit", fields: [toVisitId], references: [id])
 
   @@index([toDoctorId])
   @@index([patientId])
@@ -686,21 +706,21 @@ model Referral {
 }
 
 model Prescription {
-  id          String             @id @default(uuid()) @db.Uuid
-  visitId     String             @map("visit_id") @db.Uuid
-  patientId   String             @map("patient_id") @db.Uuid
-  doctorId    String             @map("doctor_id") @db.Uuid
-  orderId     String?            @unique @map("order_id") @db.Uuid // MEDICATION order
-  status      PrescriptionStatus @default(ACTIVE)
-  notes       String?
-  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id        String             @id @default(uuid()) @db.Uuid
+  visitId   String             @map("visit_id") @db.Uuid
+  patientId String             @map("patient_id") @db.Uuid
+  doctorId  String             @map("doctor_id") @db.Uuid
+  orderId   String?            @unique @map("order_id") @db.Uuid // MEDICATION order
+  status    PrescriptionStatus @default(ACTIVE)
+  notes     String?
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  visit       Visit              @relation(fields: [visitId], references: [id])
-  patient     Patient            @relation(fields: [patientId], references: [id])
-  doctor      Staff              @relation(fields: [doctorId], references: [id])
-  order       Order?             @relation(fields: [orderId], references: [id])
-  items       PrescriptionItem[]
+  visit   Visit              @relation(fields: [visitId], references: [id])
+  patient Patient            @relation(fields: [patientId], references: [id])
+  doctor  Staff              @relation(fields: [doctorId], references: [id])
+  order   Order?             @relation(fields: [orderId], references: [id])
+  items   PrescriptionItem[]
 
   @@index([status, createdAt])
   @@index([patientId])
@@ -708,21 +728,21 @@ model Prescription {
 }
 
 model PrescriptionItem {
-  id              String        @id @default(uuid()) @db.Uuid
-  prescriptionId  String        @map("prescription_id") @db.Uuid
-  medicineId      String?       @map("medicine_id") @db.Uuid
-  medicineName    String        @map("medicine_name") // as written by the doctor
-  dose            String?
-  frequency       String?
-  durationDays    Int?          @map("duration_days")
-  route           String?
-  instructions    String?
-  quantity        Int
-  dispensedQuantity Int         @default(0) @map("dispensed_quantity")
+  id                String  @id @default(uuid()) @db.Uuid
+  prescriptionId    String  @map("prescription_id") @db.Uuid
+  medicineId        String? @map("medicine_id") @db.Uuid
+  medicineName      String  @map("medicine_name") // as written by the doctor
+  dose              String?
+  frequency         String?
+  durationDays      Int?    @map("duration_days")
+  route             String?
+  instructions      String?
+  quantity          Int
+  dispensedQuantity Int     @default(0) @map("dispensed_quantity")
 
-  prescription    Prescription  @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
-  medicine        Medicine?     @relation(fields: [medicineId], references: [id])
-  dispensations   Dispensation[]
+  prescription  Prescription   @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medicine      Medicine?      @relation(fields: [medicineId], references: [id])
+  dispensations Dispensation[]
 
   @@index([prescriptionId])
   @@map("prescription_items")
@@ -737,7 +757,7 @@ model Medicine {
   code               String   @unique
   name               String
   genericName        String?  @map("generic_name")
-  form               String?  // tablet, syrup, injection …
+  form               String? // tablet, syrup, injection …
   strength           String?
   unit               String   @default("unit")
   purchasePricePaise Int      @map("purchase_price_paise")
@@ -749,49 +769,49 @@ model Medicine {
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  catalogueItem      ServiceCatalogue? @relation(fields: [catalogueItemId], references: [id])
-  prescriptionItems  PrescriptionItem[]
-  stockMovements     StockMovement[]
-  dispensations      Dispensation[]
+  catalogueItem     ServiceCatalogue?  @relation(fields: [catalogueItemId], references: [id])
+  prescriptionItems PrescriptionItem[]
+  stockMovements    StockMovement[]
+  dispensations     Dispensation[]
 
   @@index([name])
   @@map("medicines")
 }
 
 model StockMovement {
-  id                 String            @id @default(uuid()) @db.Uuid
-  medicineId         String            @map("medicine_id") @db.Uuid
-  type               StockMovementType
-  quantity           Int               // signed: + in, - out
-  unitCostPaise      Int?              @map("unit_cost_paise")
-  dispensationId     String?           @unique @map("dispensation_id") @db.Uuid
-  reference          String?
-  performedById      String            @map("performed_by_id") @db.Uuid
-  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  id             String            @id @default(uuid()) @db.Uuid
+  medicineId     String            @map("medicine_id") @db.Uuid
+  type           StockMovementType
+  quantity       Int // signed: + in, - out
+  unitCostPaise  Int?              @map("unit_cost_paise")
+  dispensationId String?           @unique @map("dispensation_id") @db.Uuid
+  reference      String?
+  performedById  String            @map("performed_by_id") @db.Uuid
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  medicine           Medicine          @relation(fields: [medicineId], references: [id])
-  dispensation       Dispensation?     @relation(fields: [dispensationId], references: [id])
-  performedBy        Staff             @relation(fields: [performedById], references: [id])
+  medicine     Medicine      @relation(fields: [medicineId], references: [id])
+  dispensation Dispensation? @relation(fields: [dispensationId], references: [id])
+  performedBy  Staff         @relation(fields: [performedById], references: [id])
 
   @@index([medicineId, createdAt])
   @@map("stock_movements")
 }
 
 model Dispensation {
-  id                  String           @id @default(uuid()) @db.Uuid
-  prescriptionItemId  String           @map("prescription_item_id") @db.Uuid
-  medicineId          String           @map("medicine_id") @db.Uuid
-  quantity            Int
-  unitPricePaise      Int              @map("unit_price_paise") // selling price at time of dispense
-  unitCostPaise       Int              @map("unit_cost_paise")  // purchase price at time of dispense (margin)
-  dispensedById       String           @map("dispensed_by_id") @db.Uuid
-  dispensedAt         DateTime         @default(now()) @map("dispensed_at") @db.Timestamptz(3)
+  id                 String   @id @default(uuid()) @db.Uuid
+  prescriptionItemId String   @map("prescription_item_id") @db.Uuid
+  medicineId         String   @map("medicine_id") @db.Uuid
+  quantity           Int
+  unitPricePaise     Int      @map("unit_price_paise") // selling price at time of dispense
+  unitCostPaise      Int      @map("unit_cost_paise") // purchase price at time of dispense (margin)
+  dispensedById      String   @map("dispensed_by_id") @db.Uuid
+  dispensedAt        DateTime @default(now()) @map("dispensed_at") @db.Timestamptz(3)
 
-  prescriptionItem    PrescriptionItem @relation(fields: [prescriptionItemId], references: [id])
-  medicine            Medicine         @relation(fields: [medicineId], references: [id])
-  dispensedBy         Staff            @relation(fields: [dispensedById], references: [id])
-  stockMovement       StockMovement?
-  charge              Charge?
+  prescriptionItem PrescriptionItem @relation(fields: [prescriptionItemId], references: [id])
+  medicine         Medicine         @relation(fields: [medicineId], references: [id])
+  dispensedBy      Staff            @relation(fields: [dispensedById], references: [id])
+  stockMovement    StockMovement?
+  charge           Charge?
 
   @@index([dispensedAt])
   @@map("dispensations")
@@ -813,66 +833,71 @@ model ServiceCatalogue {
   createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  department   Department        @relation(fields: [departmentId], references: [id])
-  charges      Charge[]
-  orders       Order[]
-  medicine     Medicine?
+  department Department @relation(fields: [departmentId], references: [id])
+  charges    Charge[]
+  orders     Order[]
+  medicine   Medicine?
 
   @@index([departmentId])
   @@map("service_catalogue")
 }
 
 model Charge {
-  id              String           @id @default(uuid()) @db.Uuid
-  visitId         String           @map("visit_id") @db.Uuid
-  catalogueItemId String           @map("catalogue_item_id") @db.Uuid
-  departmentId    String           @map("department_id") @db.Uuid
-  orderId         String?          @map("order_id") @db.Uuid
-  dispensationId  String?          @unique @map("dispensation_id") @db.Uuid
+  id              String       @id @default(uuid()) @db.Uuid
+  visitId         String?      @map("visit_id") @db.Uuid // null only for a prepaid consultation until check-in
+  appointmentId   String?      @map("appointment_id") @db.Uuid // prepaid online consultation
+  catalogueItemId String       @map("catalogue_item_id") @db.Uuid
+  departmentId    String       @map("department_id") @db.Uuid
+  orderId         String?      @map("order_id") @db.Uuid
+  dispensationId  String?      @unique @map("dispensation_id") @db.Uuid
   description     String
-  quantity        Int              @default(1)
-  unitPricePaise  Int              @map("unit_price_paise")
-  discountPaise   Int              @default(0) @map("discount_paise")
-  totalPaise      Int              @map("total_paise")
-  status          ChargeStatus     @default(PENDING)
-  createdById     String?          @map("created_by_id") @db.Uuid
-  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  quantity        Int          @default(1)
+  unitPricePaise  Int          @map("unit_price_paise")
+  discountPaise   Int          @default(0) @map("discount_paise")
+  totalPaise      Int          @map("total_paise")
+  status          ChargeStatus @default(PENDING)
+  createdById     String?      @map("created_by_id") @db.Uuid
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  visit           Visit            @relation(fields: [visitId], references: [id])
-  catalogueItem   ServiceCatalogue @relation(fields: [catalogueItemId], references: [id])
-  department      Department       @relation(fields: [departmentId], references: [id])
-  order           Order?           @relation(fields: [orderId], references: [id])
-  dispensation    Dispensation?    @relation(fields: [dispensationId], references: [id])
-  createdBy       Staff?           @relation(fields: [createdById], references: [id])
-  invoiceLine     InvoiceLine?
+  visit         Visit?           @relation(fields: [visitId], references: [id])
+  appointment   Appointment?     @relation(fields: [appointmentId], references: [id])
+  catalogueItem ServiceCatalogue @relation(fields: [catalogueItemId], references: [id])
+  department    Department       @relation(fields: [departmentId], references: [id])
+  order         Order?           @relation(fields: [orderId], references: [id])
+  dispensation  Dispensation?    @relation(fields: [dispensationId], references: [id])
+  createdBy     Staff?           @relation(fields: [createdById], references: [id])
+  invoiceLine   InvoiceLine?
 
   @@index([visitId])
+  @@index([appointmentId])
   @@index([departmentId, createdAt])
   @@map("charges")
 }
 
 model Invoice {
-  id             String        @id @default(uuid()) @db.Uuid
-  invoiceNumber  String        @unique @map("invoice_number")
-  visitId        String        @unique @map("visit_id") @db.Uuid // one bill per visit
-  patientId      String        @map("patient_id") @db.Uuid
-  status         InvoiceStatus @default(DRAFT)
-  subtotalPaise  Int           @default(0) @map("subtotal_paise")
-  discountPaise  Int           @default(0) @map("discount_paise")
-  taxPaise       Int           @default(0) @map("tax_paise")
-  totalPaise     Int           @default(0) @map("total_paise")
-  paidPaise      Int           @default(0) @map("paid_paise")
-  issuedById     String?       @map("issued_by_id") @db.Uuid
-  issuedAt       DateTime?     @map("issued_at") @db.Timestamptz(3)
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id            String        @id @default(uuid()) @db.Uuid
+  invoiceNumber String        @unique @map("invoice_number")
+  visitId       String?       @unique @map("visit_id") @db.Uuid // one bill per visit (null for a prepaid booking until check-in)
+  appointmentId String?       @unique @map("appointment_id") @db.Uuid // prepaid online consultation; becomes the visit's bill at check-in
+  patientId     String        @map("patient_id") @db.Uuid
+  status        InvoiceStatus @default(DRAFT)
+  subtotalPaise Int           @default(0) @map("subtotal_paise")
+  discountPaise Int           @default(0) @map("discount_paise")
+  taxPaise      Int           @default(0) @map("tax_paise")
+  totalPaise    Int           @default(0) @map("total_paise")
+  paidPaise     Int           @default(0) @map("paid_paise")
+  issuedById    String?       @map("issued_by_id") @db.Uuid
+  issuedAt      DateTime?     @map("issued_at") @db.Timestamptz(3)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  visit          Visit         @relation(fields: [visitId], references: [id])
-  patient        Patient       @relation(fields: [patientId], references: [id])
-  issuedBy       Staff?        @relation(fields: [issuedById], references: [id])
-  lines          InvoiceLine[]
-  allocations    PaymentAllocation[]
-  refunds        Refund[]
+  visit       Visit?              @relation(fields: [visitId], references: [id])
+  appointment Appointment?        @relation(fields: [appointmentId], references: [id])
+  patient     Patient             @relation(fields: [patientId], references: [id])
+  issuedBy    Staff?              @relation(fields: [issuedById], references: [id])
+  lines       InvoiceLine[]
+  allocations PaymentAllocation[]
+  refunds     Refund[]
 
   @@index([patientId])
   @@index([status, createdAt])
@@ -880,46 +905,50 @@ model Invoice {
 }
 
 model InvoiceLine {
-  id             String     @id @default(uuid()) @db.Uuid
-  invoiceId      String     @map("invoice_id") @db.Uuid
-  chargeId       String?    @unique @map("charge_id") @db.Uuid
-  departmentId   String     @map("department_id") @db.Uuid
+  id             String  @id @default(uuid()) @db.Uuid
+  invoiceId      String  @map("invoice_id") @db.Uuid
+  chargeId       String? @unique @map("charge_id") @db.Uuid
+  departmentId   String  @map("department_id") @db.Uuid
   description    String
-  quantity       Int        @default(1)
-  unitPricePaise Int        @map("unit_price_paise")
-  discountPaise  Int        @default(0) @map("discount_paise")
-  totalPaise     Int        @map("total_paise") // net of discount, before tax
-  taxPercent     Int        @default(0) @map("tax_percent") // snapshot of the catalogue item's rate
-  taxPaise       Int        @default(0) @map("tax_paise")
+  quantity       Int     @default(1)
+  unitPricePaise Int     @map("unit_price_paise")
+  discountPaise  Int     @default(0) @map("discount_paise")
+  totalPaise     Int     @map("total_paise") // net of discount, before tax
+  taxPercent     Int     @default(0) @map("tax_percent") // snapshot of the catalogue item's rate
+  taxPaise       Int     @default(0) @map("tax_paise")
 
-  invoice        Invoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  charge         Charge?    @relation(fields: [chargeId], references: [id])
-  department     Department @relation(fields: [departmentId], references: [id])
+  invoice    Invoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  charge     Charge?    @relation(fields: [chargeId], references: [id])
+  department Department @relation(fields: [departmentId], references: [id])
 
   @@index([invoiceId])
   @@map("invoice_lines")
 }
 
 model Payment {
-  id             String        @id @default(uuid()) @db.Uuid
-  receiptNumber  String        @unique @map("receipt_number")
-  patientId      String        @map("patient_id") @db.Uuid
+  id             String         @id @default(uuid()) @db.Uuid
+  receiptNumber  String         @unique @map("receipt_number")
+  patientId      String         @map("patient_id") @db.Uuid
   method         PaymentMethod
-  status         PaymentStatus @default(CONFIRMED)
-  amountPaise    Int           @map("amount_paise")
-  reference      String?       // UPI txn id / card last4 / etc.
-  idempotencyKey String        @unique @map("idempotency_key") // safe retries: never charge twice
-  receivedById   String?       @map("received_by_id") @db.Uuid
-  receivedAt     DateTime      @default(now()) @map("received_at") @db.Timestamptz(3)
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  channel        PaymentChannel @default(COUNTER)
+  status         PaymentStatus  @default(CONFIRMED)
+  amountPaise    Int            @map("amount_paise")
+  reference      String? // UPI txn id / card last4 / gateway payment id
+  provider       String? // online: UPI app, card brand, bank or wallet name (never card numbers)
+  last4          String? // online card payments: last 4 digits only
+  idempotencyKey String         @unique @map("idempotency_key") // safe retries: never charge twice
+  receivedById   String?        @map("received_by_id") @db.Uuid
+  receivedAt     DateTime       @default(now()) @map("received_at") @db.Timestamptz(3)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  patient        Patient       @relation(fields: [patientId], references: [id])
-  receivedBy     Staff?        @relation(fields: [receivedById], references: [id])
-  allocations    PaymentAllocation[]
-  refunds        Refund[]
+  patient     Patient             @relation(fields: [patientId], references: [id])
+  receivedBy  Staff?              @relation(fields: [receivedById], references: [id])
+  allocations PaymentAllocation[]
+  refunds     Refund[]
 
   @@index([receivedAt])
   @@index([method, receivedAt])
+  @@index([channel, receivedAt])
   @@map("payments")
 }
 
@@ -931,8 +960,8 @@ model PaymentAllocation {
   amountPaise Int      @map("amount_paise")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
 
   @@unique([paymentId, invoiceId])
   @@index([invoiceId])
@@ -940,23 +969,23 @@ model PaymentAllocation {
 }
 
 model Refund {
-  id           String       @id @default(uuid()) @db.Uuid
-  paymentId    String       @map("payment_id") @db.Uuid
-  invoiceId    String?      @map("invoice_id") @db.Uuid
-  amountPaise  Int          @map("amount_paise")
-  method       PaymentMethod
-  reason       String
-  status       RefundStatus @default(REQUESTED)
-  requestedById String?     @map("requested_by_id") @db.Uuid
-  approvedById String?      @map("approved_by_id") @db.Uuid // the ACCOUNTS user who approved or rejected
-  decisionNote String?      @map("decision_note")
-  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  processedAt  DateTime?    @map("processed_at") @db.Timestamptz(3)
+  id            String        @id @default(uuid()) @db.Uuid
+  paymentId     String        @map("payment_id") @db.Uuid
+  invoiceId     String?       @map("invoice_id") @db.Uuid
+  amountPaise   Int           @map("amount_paise")
+  method        PaymentMethod
+  reason        String
+  status        RefundStatus  @default(REQUESTED)
+  requestedById String?       @map("requested_by_id") @db.Uuid
+  approvedById  String?       @map("approved_by_id") @db.Uuid // the ACCOUNTS user who approved or rejected
+  decisionNote  String?       @map("decision_note")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  processedAt   DateTime?     @map("processed_at") @db.Timestamptz(3)
 
-  payment      Payment      @relation(fields: [paymentId], references: [id])
-  invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
-  requestedBy  Staff?       @relation("RefundRequestedBy", fields: [requestedById], references: [id])
-  approvedBy   Staff?       @relation("RefundApprovedBy", fields: [approvedById], references: [id])
+  payment     Payment  @relation(fields: [paymentId], references: [id])
+  invoice     Invoice? @relation(fields: [invoiceId], references: [id])
+  requestedBy Staff?   @relation("RefundRequestedBy", fields: [requestedById], references: [id])
+  approvedBy  Staff?   @relation("RefundApprovedBy", fields: [approvedById], references: [id])
 
   @@index([createdAt])
   @@index([status])
@@ -964,6 +993,39 @@ model Refund {
 }
 
 // End-of-day cash reconciliation at the billing counter: expected totals by method vs counted cash.
+/// Online checkout for a held slot (module: payments). Card numbers never reach the server: only method,
+/// provider (app / brand / bank / wallet) and the last 4 digits are kept.
+model OnlinePaymentOrder {
+  id                String            @id @default(uuid()) @db.Uuid
+  provider          String // gateway name, e.g. SIMULATED (later RAZORPAY)
+  providerOrderId   String            @unique @map("provider_order_id")
+  providerPaymentId String?           @map("provider_payment_id")
+  idempotencyKey    String            @unique @map("idempotency_key") // creating the order twice returns the first one
+  attemptKey        String?           @map("attempt_key") // last pay attempt's key (a retried request is replayed)
+  attempts          Int               @default(0)
+  status            OnlineOrderStatus @default(CREATED)
+  userId            String            @map("user_id") @db.Uuid // the portal user who holds the slot
+  patientId         String            @map("patient_id") @db.Uuid
+  holdId            String            @map("hold_id")
+  doctorId          String            @map("doctor_id") @db.Uuid
+  slotStart         DateTime          @map("slot_start") @db.Timestamptz(3)
+  reason            String?
+  catalogueItemId   String            @map("catalogue_item_id") @db.Uuid
+  amountPaise       Int               @map("amount_paise")
+  method            PaymentMethod?
+  instrument        String? // UPI app / card brand / bank / wallet
+  last4             String?
+  failureReason     String?           @map("failure_reason")
+  appointmentId     String?           @unique @map("appointment_id") @db.Uuid
+  paymentId         String?           @unique @map("payment_id") @db.Uuid
+  expiresAt         DateTime          @map("expires_at") @db.Timestamptz(3)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([userId, createdAt])
+  @@map("online_payment_orders")
+}
+
 model CashReconciliation {
   id                String   @id @default(uuid()) @db.Uuid
   businessDate      String   @unique @map("business_date") // hospital-local date, YYYY-MM-DD
@@ -977,7 +1039,7 @@ model CashReconciliation {
   closedById        String   @map("closed_by_id") @db.Uuid
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  closedBy          Staff    @relation(fields: [closedById], references: [id])
+  closedBy Staff @relation(fields: [closedById], references: [id])
 
   @@map("cash_reconciliations")
 }
@@ -999,27 +1061,27 @@ model OtpRequest {
   ip          String?
   createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([email, purpose, createdAt])
   @@map("otp_requests")
 }
 
 model Notification {
-  id         String              @id @default(uuid()) @db.Uuid
-  userId     String?             @map("user_id") @db.Uuid
-  channel    NotificationChannel
-  status     NotificationStatus  @default(QUEUED)
-  recipient  String?             // email address for EMAIL channel
-  subject    String?
-  body       String
-  data       Json?
-  error      String?
-  sentAt     DateTime?           @map("sent_at") @db.Timestamptz(3)
-  readAt     DateTime?           @map("read_at") @db.Timestamptz(3)
-  createdAt  DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  id        String              @id @default(uuid()) @db.Uuid
+  userId    String?             @map("user_id") @db.Uuid
+  channel   NotificationChannel
+  status    NotificationStatus  @default(QUEUED)
+  recipient String? // email address for EMAIL channel
+  subject   String?
+  body      String
+  data      Json?
+  error     String?
+  sentAt    DateTime?           @map("sent_at") @db.Timestamptz(3)
+  readAt    DateTime?           @map("read_at") @db.Timestamptz(3)
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  user       User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
   @@map("notifications")
@@ -1028,8 +1090,8 @@ model Notification {
 model AuditLog {
   id        BigInt   @id @default(autoincrement())
   actorId   String?  @map("actor_id") @db.Uuid
-  action    String   // e.g. VIEW, CREATE, UPDATE, DELETE, LOGIN, BREAK_GLASS
-  entity    String   // e.g. clinical_notes
+  action    String // e.g. VIEW, CREATE, UPDATE, DELETE, LOGIN, BREAK_GLASS
+  entity    String // e.g. clinical_notes
   entityId  String?  @map("entity_id")
   patientId String?  @map("patient_id") @db.Uuid
   reason    String?
@@ -1037,8 +1099,8 @@ model AuditLog {
   metadata  Json?
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  actor     User?    @relation(fields: [actorId], references: [id])
-  patient   Patient? @relation(fields: [patientId], references: [id])
+  actor   User?    @relation(fields: [actorId], references: [id])
+  patient Patient? @relation(fields: [patientId], references: [id])
 
   @@index([patientId, createdAt])
   @@index([actorId, createdAt])
@@ -1048,19 +1110,19 @@ model AuditLog {
 
 // Break-glass: time-limited access to an unrelated patient's record, with a reason.
 model AccessOverride {
-  id           String    @id @default(uuid()) @db.Uuid
-  userId       String    @map("user_id") @db.Uuid
-  patientId    String    @map("patient_id") @db.Uuid
-  reason       String
-  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
-  approvedById String?   @map("approved_by_id") @db.Uuid
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  patientId       String    @map("patient_id") @db.Uuid
+  reason          String
+  expiresAt       DateTime  @map("expires_at") @db.Timestamptz(3)
+  approvedById    String?   @map("approved_by_id") @db.Uuid
   adminNotifiedAt DateTime? @map("admin_notified_at") @db.Timestamptz(3)
-  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  user         User      @relation("OverrideUser", fields: [userId], references: [id])
-  approvedBy   User?     @relation("OverrideApprover", fields: [approvedById], references: [id])
-  patient      Patient   @relation(fields: [patientId], references: [id])
+  user       User    @relation("OverrideUser", fields: [userId], references: [id])
+  approvedBy User?   @relation("OverrideApprover", fields: [approvedById], references: [id])
+  patient    Patient @relation(fields: [patientId], references: [id])
 
   @@index([userId, patientId, expiresAt])
   @@map("access_overrides")

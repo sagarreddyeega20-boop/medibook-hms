@@ -142,7 +142,7 @@ export function receiptPdf(r: Receipt): Buffer {
   y += 74;
   y = keyValues(doc, y, [
     [['Received from', r.patient?.name ?? '-'], ['Patient ID (MRN)', r.patient?.mrn ?? '-']],
-    [['Date', when(r.receivedAt)], ['Received by', r.receivedBy ? `${r.receivedBy.name} (${r.receivedBy.staffCode})` : '-']],
+    [['Date', when(r.receivedAt)], ['Received by', r.receivedBy ? `${r.receivedBy.name} (${r.receivedBy.staffCode})` : r.channel === 'ONLINE' ? `Paid online${r.provider ? ` · ${r.provider}` : ''}${r.last4 ? ` ···· ${r.last4}` : ''}` : '-']],
   ]);
   const right = doc.width - M;
   doc.text(M, y, 'Applied to', { size: 11, bold: true });

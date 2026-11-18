@@ -61,7 +61,8 @@ export const accountsService = {
 
     const billedPaise = revenue.reduce((n, d) => n + d.revenuePaise, 0);
     const receivedPaise = collections.methods.reduce((n, m) => n + m.amountPaise, 0);
-    const refundedPaise = collections.refunds.APPROVED?.amountPaise ?? 0;
+    // Money given back: counter refunds approved by accounts + online refunds processed by the gateway.
+    const refundedPaise = (collections.refunds.APPROVED?.amountPaise ?? 0) + (collections.refunds.REFUNDED?.amountPaise ?? 0);
     const appointments = visits.byType.OPD ?? 0;
     const walkIns = visits.byType.WALK_IN ?? 0;
 
@@ -78,6 +79,8 @@ export const accountsService = {
       revenueByDepartment: revenue.map((d) => ({ ...d, sharePercent: billedPaise ? Math.round((d.revenuePaise / billedPaise) * 1000) / 10 : 0 })),
       trend,
       methods: collections.methods,
+      /** COUNTER (cash / UPI / card at the billing counter) vs ONLINE (prepaid bookings through the gateway). */
+      channels: collections.channels,
       pharmacy: { salesPaise: pharmacy.salesPaise, costPaise: pharmacy.costPaise, marginPaise: pharmacy.marginPaise, marginPercent: pharmacy.salesPaise ? Math.round((pharmacy.marginPaise / pharmacy.salesPaise) * 1000) / 10 : 0, items: pharmacy.items.slice(0, 8) },
       visits: {
         appointments,
@@ -93,6 +96,7 @@ export const accountsService = {
         requested: collections.refunds.REQUESTED ?? { amountPaise: 0, count: 0 },
         approved: collections.refunds.APPROVED ?? { amountPaise: 0, count: 0 },
         rejected: collections.refunds.REJECTED ?? { amountPaise: 0, count: 0 },
+        refunded: collections.refunds.REFUNDED ?? { amountPaise: 0, count: 0 },
         list: refunds,
       },
     };
@@ -106,9 +110,9 @@ export const accountsService = {
       billingService.refunds({ from: r.start, to: r.end, take: 50_000 }),
     ]);
     const rows: (string | number | null)[][] = [
-      ['Date (IST)', 'Type', 'Receipt', 'Patient', 'Patient ID', 'Method', 'Reference', 'Invoices', 'Amount (INR)', 'Status', 'Recorded by'],
-      ...payments.map((p) => [istStamp(p.receivedAt), 'Payment', p.receiptNumber, p.patient?.name ?? '', p.patient?.mrn ?? '', p.method, p.reference, p.invoices.join(' '), rupees(p.amountPaise), p.status, p.receivedBy]),
-      ...refunds.map((x) => [istStamp(x.processedAt ?? x.createdAt), 'Refund', x.receiptNumber, x.patient?.name ?? '', x.patient?.mrn ?? '', x.method, x.reason, x.invoiceNumber ?? '', rupees(-x.amountPaise), x.status, x.decidedBy ?? x.requestedBy]),
+      ['Date (IST)', 'Type', 'Receipt', 'Patient', 'Patient ID', 'Channel', 'Method', 'Reference', 'Invoices', 'Amount (INR)', 'Status', 'Recorded by'],
+      ...payments.map((p) => [istStamp(p.receivedAt), 'Payment', p.receiptNumber, p.patient?.name ?? '', p.patient?.mrn ?? '', p.channel, p.method, p.reference, p.invoices.join(' '), rupees(p.amountPaise), p.status, p.receivedBy ?? (p.channel === 'ONLINE' ? 'Online' : '')]),
+      ...refunds.map((x) => [istStamp(x.processedAt ?? x.createdAt), 'Refund', x.receiptNumber, x.patient?.name ?? '', x.patient?.mrn ?? '', '', x.method, x.reason, x.invoiceNumber ?? '', rupees(-x.amountPaise), x.status, x.decidedBy ?? x.requestedBy]),
     ];
     return { filename: `medibook-transactions-${r.from}-to-${r.to}.csv`, csv: `﻿${rows.map((row) => row.map(csvCell).join(',')).join('\r\n')}\r\n`, count: rows.length - 1 };
   },

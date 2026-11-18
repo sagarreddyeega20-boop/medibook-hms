@@ -26,6 +26,8 @@ export interface Appointment {
   cancelReason: string | null;
   tokenNumber: number | null;
   rescheduledFromId: string | null;
+  /** How the consultation is paid: prepaid online, refunded after a cancel, or at the hospital counter. */
+  payment?: 'PAID_ONLINE' | 'REFUNDED' | 'PAY_AT_HOSPITAL';
   patient: { id: string; name: string; mrn: string } | null;
   doctor: { id: string; name: string; specialty: string | null; department: { name: string } | null; consultationFeePaise: number | null } | null;
 }

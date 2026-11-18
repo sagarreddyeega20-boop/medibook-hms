@@ -42,6 +42,13 @@ const EnvSchema = z.object({
   RATE_LIMIT_LOGIN_PER_ACCOUNT: z.coerce.number().int().positive().default(10),
   RATE_LIMIT_OTP_PER_IP: z.coerce.number().int().positive().default(60),
 
+  /** Online prepayment of the consultation. Only the simulated gateway exists today (Razorpay test mode plugs in later). */
+  PAYMENT_PROVIDER: z.enum(['simulated']).default('simulated'),
+  /** Signs gateway webhooks. Unset → derived from JWT_SECRET (fine for the simulated gateway). */
+  PAYMENT_WEBHOOK_SECRET: z.string().optional().default(''),
+  /** How long the simulated gateway "processes" before it sends its webhook. */
+  PAYMENT_SIM_DELAY_MS: z.coerce.number().int().min(0).default(2000),
+
   /** Result attachments (relative to /server). Never served statically. */
   UPLOAD_DIR: z.string().default('uploads'),
 

@@ -8,6 +8,7 @@ import { visitsRouter } from './visits/index.js';
 import { ordersRouter } from './orders/index.js';
 import { pharmacyRouter } from './pharmacy/index.js';
 import { billingRouter } from './billing/index.js';
+import { paymentsRouter } from './payments/index.js';
 import { accountsRouter } from './accounts/index.js';
 import { auditRouter } from './audit/index.js';
 import { notificationsRouter } from './notifications/index.js';
@@ -23,6 +24,7 @@ export const moduleRouters: Record<string, Router> = {
   orders: ordersRouter,
   pharmacy: pharmacyRouter,
   billing: billingRouter,
+  payments: paymentsRouter,
   accounts: accountsRouter,
   audit: auditRouter,
   notifications: notificationsRouter,

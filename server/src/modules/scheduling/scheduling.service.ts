@@ -10,10 +10,12 @@ import {
   addDays, atLocalMinute, formatLocal, localDateKey, localDayOfWeek, localDayRange, localMidnight, minuteLabel,
 } from '../../lib/time.js';
 import { AuditAction, auditService } from '../audit/audit.service.js';
+import { billingService, type PrepaidState } from '../billing/billing.service.js';
 import type { SessionData } from '../auth/session.service.js';
 import { notificationsService } from '../notifications/notifications.service.js';
 import { ordersService } from '../orders/orders.service.js';
 import { patientsService } from '../patients/patients.service.js';
+import { paymentsService } from '../payments/payments.service.js';
 import { staffService, type Doctor } from '../staff/staff.service.js';
 
 /**
@@ -222,9 +224,10 @@ const apptSelect = {
 type ApptRow = Prisma.AppointmentGetPayload<{ select: typeof apptSelect }>;
 
 async function present(rows: ApptRow[]) {
-  const [doctors, patients] = await Promise.all([
+  const [doctors, patients, prepaid] = await Promise.all([
     staffService.doctorsByIds([...new Set(rows.map((r) => r.doctorId))]),
     patientsService.summaries(rows.map((r) => r.patientId)),
+    billingService.prepaidStatus(rows.map((r) => r.id)),
   ]);
   return rows.map((r) => {
     const d = doctors.get(r.doctorId);
@@ -232,6 +235,8 @@ async function present(rows: ApptRow[]) {
     return {
       ...r,
       date: localDateKey(r.slotStart),
+      /** PAID_ONLINE / REFUNDED for prepaid bookings; PAY_AT_HOSPITAL otherwise. */
+      payment: (prepaid.get(r.id) ?? 'PAY_AT_HOSPITAL') as PrepaidState | 'PAY_AT_HOSPITAL',
       doctor: d ? { id: d.id, name: d.fullName, specialty: d.specialty, department: d.department, consultationFeePaise: d.consultationFeePaise } : null,
       patient: p ? { id: p.id, name: p.name, mrn: p.mrn, phone: p.phone } : null,
     };
@@ -358,6 +363,15 @@ export const schedulingService = {
     return { holdId: rec.holdId, doctorId: rec.doctorId, slotStart: rec.slotStart, slotEnd: rec.slotEnd, expiresAt: new Date(Date.now() + env.SLOT_HOLD_SECONDS * 1000).toISOString(), holdSeconds: env.SLOT_HOLD_SECONDS };
   },
 
+  /** A live hold owned by `userId` (payments: checkout summary and expiry), or null once it has expired. */
+  async holdInfo(holdId: string, userId: string) {
+    const rec = await loadHold(holdId);
+    if (!rec || rec.userId !== userId) return null;
+    const ttl = await redis.ttl(holdKey(rec.doctorId, rec.slotStart));
+    if (ttl <= 0) return null;
+    return { ...rec, expiresAt: new Date(Date.now() + ttl * 1000) };
+  },
+
   async releaseHold(actor: Actor, holdId: string) {
     const rec = await loadHold(holdId);
     if (!rec) return;
@@ -370,7 +384,15 @@ export const schedulingService = {
   /* ---------------- Booking ---------------- */
 
   /** Confirms a hold into an appointment. The unique index decides if two bookings race for one slot. */
-  async book(actor: Actor, input: { holdId: string; patientId: string; reason?: string | null; referralOrderId?: string | null }) {
+  /**
+   * `afterCreate` runs inside the booking transaction (online prepayment records the charge, invoice and payment
+   * there), so a booking and its payment commit together or not at all.
+   */
+  async book(
+    actor: Actor,
+    input: { holdId: string; patientId: string; reason?: string | null; referralOrderId?: string | null },
+    opts: { afterCreate?: (appointment: { id: string; ref: string; patientId: string }, tx: Prisma.TransactionClient) => Promise<void> } = {},
+  ) {
     const rec = await loadHold(input.holdId);
     if (!rec || rec.userId !== actor.session.userId) throw new AppError(409, 'HOLD_EXPIRED', 'Your hold on this slot has expired. Pick the slot again.');
     await assertCanActFor(actor, input.patientId);
@@ -401,6 +423,7 @@ export const schedulingService = {
         if (input.referralOrderId) {
           await ordersService.markReferralBooked(input.referralOrderId, { id: a.id, ref, doctorId: a.doctorId, slotStart: a.slotStart, patientId: a.patientId }, actor, tx);
         }
+        if (opts.afterCreate) await opts.afterCreate({ id: a.id, ref, patientId: a.patientId }, tx);
         await auditService.record(
           {
             actorId: actor.session.userId, action: AuditAction.APPOINTMENT_BOOKED, entity: 'appointments', entityId: a.id, patientId: a.patientId, ip: actor.ip,
@@ -442,6 +465,8 @@ export const schedulingService = {
       return tx.appointment.findUniqueOrThrow({ where: { id: appointmentId }, select: apptSelect });
     });
     emitScheduleChanged({ doctorId: appt.doctorId, date: localDateKey(appt.slotStart), kind: 'cancelled' });
+    // Prepaid online: refund through the gateway (no-op for pay-at-hospital bookings).
+    await paymentsService.refundCancelledBooking({ appointmentId: appt.id, ref: appt.ref, reason: reason.trim(), actorUserId: actor.session.userId, ip: actor.ip ?? null });
     const [view] = await present([updated]);
     void notifySafe(appt.patientId, 'appointment-cancelled', view!);
     return view!;
@@ -472,6 +497,7 @@ export const schedulingService = {
           },
           select: apptSelect,
         });
+        await billingService.movePrepaid(old.id, a.id, tx); // a prepayment follows the booking
         await auditService.record(
           {
             actorId: actor.session.userId, action: AuditAction.APPOINTMENT_RESCHEDULED, entity: 'appointments', entityId: a.id, patientId: a.patientId, ip: actor.ip,

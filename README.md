@@ -224,9 +224,10 @@ with cron / Task Scheduler for daily backups.
   (`Visit.type` already reserves `IPD` and `EMERGENCY`). There is no nurse login.
 - **No SMS or WhatsApp**: OTPs, booking confirmations and alerts go by email only. Without SMTP settings
   (or with `MAIL_TRANSPORT=console`), emails are printed in the server console.
-- **Counter payments only**: cash, UPI and card are recorded at the billing counter. There is no online payment gateway
-  and no insurance/TPA claims; patients see and download bills in the portal but pay at the hospital.
-- Refunds are approved in the app but paid out manually (cash / UPI / card reversal outside the system).
+- **Simulated online payments only**: patients can prepay the consultation when booking online (see *Online prepayment*
+  below), but the gateway is simulated — no real money moves. Tests and medicines are paid at the counter. No
+  insurance/TPA claims.
+- Counter refunds are approved in the app but paid out manually (cash / UPI / card reversal outside the system).
 - Backups are run on demand (`npm run db:backup`); scheduling them and copying them off-site is up to the operator.
 - Single hospital site, a single API instance (Socket.IO and rate limits assume one server), no reporting replica.
 - Pharmacy stock has no suppliers, purchase orders, batches or expiry dates; lab/radiology have no machine or PACS integration.
@@ -254,6 +255,27 @@ docs/     the MVP spec and v1 UI reference screenshots
 - **Email**: every message goes through `notificationsService.notify(recipient, template, data)`. It is recorded in
   `notifications` and sent in the background (never blocks the request), retried up to 2 times, then marked `SENT`
   (with the message ID) or `FAILED` (with the error). See *Sending real email (Gmail)* below.
+
+### Online prepayment (simulated gateway)
+
+After picking a slot in **Find a doctor** or the **chat assistant**, the slot is held for 10 minutes and the patient
+chooses **Pay now** or **Pay at hospital** (`/patient/pay`, the v1 payment page).
+
+- **Pay now**: UPI (app or UPI ID), card (Luhn + brand checked in the browser; only the brand and last 4 digits reach
+  the server), net banking or wallet. Demo outcomes: UPI ID `fail@upi` or a card ending `0002` is declined; anything
+  valid succeeds after ~2 seconds. A failed attempt can be retried while the hold lasts; the hold running out shows
+  *Slot expired, pick another time*.
+- The payment is confirmed only by the gateway's HMAC-signed webhook (`POST /api/payments/webhook/:provider`). It books
+  the appointment and records the consultation charge, its invoice, the **ONLINE** payment and its allocation in one
+  transaction. One order → at most one payment (idempotency key `online:<order id>`), however many attempts or
+  webhook deliveries.
+- **No double charging**: at check-in the prepaid invoice becomes the visit's bill; the consultation is not charged
+  again, tests and medicines are added to the same bill and the counter shows the consultation as *Paid online*.
+- **Cancelling** a prepaid booking refunds it through the gateway at once (refund status `REFUNDED`, audited); accounts
+  sees it under Refunds. The accounts dashboard splits collections by channel (counter vs online).
+- The gateway sits behind `PaymentProvider` (`server/src/modules/payments/provider.ts`: `createOrder`, `confirm`,
+  `refund`, `verifyWebhook`). A Razorpay test-mode provider can be added there and selected with `PAYMENT_PROVIDER`
+  without touching booking or billing code.
 
 ### Sending real email (Gmail)
 

@@ -2,8 +2,11 @@ import { api } from './api';
 
 /** Billing / accounts API types and calls (server: /api/billing, /api/accounts). Money is integer paise. */
 
-export type PaymentMethod = 'CASH' | 'UPI' | 'CARD';
-export const METHOD_LABELS: Record<PaymentMethod, string> = { CASH: 'Cash', UPI: 'UPI', CARD: 'Card' };
+/** CASH / UPI / CARD at the counter; UPI / CARD / NETBANKING / WALLET online (prepaid bookings). */
+export type PaymentMethod = 'CASH' | 'UPI' | 'CARD' | 'NETBANKING' | 'WALLET';
+export const METHOD_LABELS: Record<PaymentMethod, string> = { CASH: 'Cash', UPI: 'UPI', CARD: 'Card', NETBANKING: 'Net banking', WALLET: 'Wallet' };
+export type PaymentChannel = 'COUNTER' | 'ONLINE';
+export const CHANNEL_LABELS: Record<PaymentChannel, string> = { COUNTER: 'At the counter', ONLINE: 'Online (prepaid bookings)' };
 
 export interface PatientRef { id: string; name: string; mrn: string }
 export interface VisitHeader { id: string; visitNumber: string; type: string; startedAt: string; department: string; doctor: string }
@@ -11,7 +14,9 @@ export interface VisitHeader { id: string; visitNumber: string; type: string; st
 export interface InvoiceSummary {
   id: string;
   invoiceNumber: string;
-  visitId: string;
+  visitId: string | null;
+  /** Prepaid online booking: the bill was created at booking and joins the visit at check-in. */
+  appointmentId: string | null;
   patientId: string;
   status: string;
   issuedAt: string | null;
@@ -22,6 +27,8 @@ export interface InvoiceSummary {
   totalPaise: number;
   paidPaise: number;
   balancePaise: number;
+  /** Paid in advance online (the consultation of a prepaid booking). */
+  paidOnlinePaise: number;
   visit: VisitHeader | null;
   patient: PatientRef | null;
 }
@@ -36,11 +43,13 @@ export interface InvoiceLine {
   totalPaise: number;
   taxPercent: number;
   taxPaise: number;
+  /** The prepaid consultation: shown as "Paid online", never collected again. */
+  paidOnline: boolean;
 }
 
 export interface InvoiceDetail extends InvoiceSummary {
   lines: InvoiceLine[];
-  payments: { paymentId: string; receiptNumber: string; method: PaymentMethod; receivedAt: string; amountPaise: number }[];
+  payments: { paymentId: string; receiptNumber: string; method: PaymentMethod; channel: PaymentChannel; receivedAt: string; amountPaise: number }[];
   refunds: { id: string; amountPaise: number; status: string; reason: string; createdAt: string }[];
 }
 
@@ -48,6 +57,9 @@ export interface Receipt {
   id: string;
   receiptNumber: string;
   method: PaymentMethod;
+  channel: PaymentChannel;
+  provider: string | null;
+  last4: string | null;
   status: string;
   amountPaise: number;
   reference: string | null;
@@ -66,7 +78,7 @@ export interface Refund {
   amountPaise: number;
   method: PaymentMethod;
   reason: string;
-  status: 'REQUESTED' | 'APPROVED' | 'REJECTED';
+  status: 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'REFUNDED';
   decisionNote: string | null;
   createdAt: string;
   processedAt: string | null;
@@ -124,11 +136,12 @@ export interface AccountsDashboard {
   revenueByDepartment: { departmentId: string; code: string; name: string; kind: string | null; revenuePaise: number; charges: number; sharePercent: number }[];
   trend: { date: string; billedPaise: number; collectedPaise: number }[];
   methods: { method: PaymentMethod; amountPaise: number; count: number }[];
+  channels: { channel: PaymentChannel; amountPaise: number; count: number }[];
   pharmacy: { salesPaise: number; costPaise: number; marginPaise: number; marginPercent: number; items: { medicineId: string; name: string; quantity: number; salesPaise: number; marginPaise: number }[] };
   visits: { appointments: number; walkIns: number; total: number; byDepartment: { departmentId: string; name: string; code: string; visits: number }[] };
   patients: { seen: number; new: number };
-  transactions: { id: string; receiptNumber: string; receivedAt: string; method: PaymentMethod; status: string; amountPaise: number; reference: string | null; refundedPaise: number; patient: PatientRef | null; receivedBy: string | null; invoices: string[] }[];
-  refunds: { requested: { amountPaise: number; count: number }; approved: { amountPaise: number; count: number }; rejected: { amountPaise: number; count: number }; list: Refund[] };
+  transactions: { id: string; receiptNumber: string; receivedAt: string; method: PaymentMethod; channel: PaymentChannel; provider: string | null; status: string; amountPaise: number; reference: string | null; refundedPaise: number; patient: PatientRef | null; receivedBy: string | null; invoices: string[] }[];
+  refunds: { requested: { amountPaise: number; count: number }; approved: { amountPaise: number; count: number }; rejected: { amountPaise: number; count: number }; refunded: { amountPaise: number; count: number }; list: Refund[] };
 }
 
 /** A fresh key per payment attempt; a retry of the same attempt reuses it, so the server never records it twice. */

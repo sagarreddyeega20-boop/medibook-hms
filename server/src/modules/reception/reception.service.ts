@@ -79,7 +79,9 @@ export const receptionService = {
 
     const patientIds = new Set<string>(visits.map((v) => v.patientId));
     for (const d of days.values()) for (const s of d.slots) if (s.appointment) patientIds.add(s.appointment.patientId);
-    const patients = await patientsService.summaries([...patientIds]);
+    const apptIds: string[] = [];
+    for (const d of days.values()) for (const s of d.slots) if (s.appointment) apptIds.push(s.appointment.id);
+    const [patients, prepaid] = await Promise.all([patientsService.summaries([...patientIds]), billingService.prepaidStatus(apptIds)]);
     const who = (id: string) => {
       const p = patients.get(id);
       return p ? { id: p.id, name: p.name, mrn: p.mrn, phone: p.phone } : null;
@@ -114,7 +116,7 @@ export const receptionService = {
         nextFreeSlot: free ? { start: free.start, end: free.end } : null,
         windows: day.windows,
         leaves: day.leaves,
-        slots: day.slots.map((s: Slot) => ({ ...s, patient: s.appointment ? who(s.appointment.patientId) : null })),
+        slots: day.slots.map((s: Slot) => ({ ...s, patient: s.appointment ? who(s.appointment.patientId) : null, payment: s.appointment ? (prepaid.get(s.appointment.id) ?? null) : null })),
       };
     });
 
@@ -151,6 +153,7 @@ export const receptionService = {
           tx,
         );
         await schedulingService.markCheckedIn(appt.id, token, tx);
+        await billingService.attachPrepaidToVisit(appt.id, v.id, tx); // a prepaid consultation's bill becomes the visit's bill
         await ordersService.attachReferralVisit({ patientId: v.patientId, doctorId: v.doctorId, visitId: v.id }, tx);
         await queueEvents(tx, { visitId: v.id, patientId: v.patientId, doctorId: v.doctorId, appointmentId: appt.id, tokenNumber: token }, ['CHECKED_IN', 'TOKEN_ISSUED']);
         await auditService.record(

@@ -34,6 +34,7 @@ const PUBLIC = [
   'POST /api/auth/otp/verify',
   'GET /api/auth/password/link',
   'POST /api/auth/password/set',
+  'POST /api/payments/webhook/:provider', // payment gateway → us; HMAC-signed body, rate limited
 ];
 
 /** Signed in; access is decided against the record itself inside the handler. */

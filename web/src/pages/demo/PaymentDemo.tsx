@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Badge, Button, Card, Icon, Input, OptionTiles, OrDivider, OrderSummary, PatientLayout, PaymentMethodCard, TrustNote,
+  Badge, Button, Card, Icon, Input, OptionTiles, OrDivider, OrderSummary, PatientLayout, PaymentMethodCard, ResultCard, TrustNote,
 } from '../../components';
 import { formatPaise } from '../../lib/format';
 import { PatientDemoNavbar } from './PatientDemoNav';
@@ -67,6 +67,28 @@ export function PaymentDemo() {
           <Button size="lg" block style={{ marginTop: 'var(--space-5)' }}>Pay {formatPaise(TOTAL)}</Button>
           <TrustNote>100% secure payments · Demo mode</TrustNote>
         </Card>
+      </div>
+
+      <h2 className="mb-page-title" style={{ marginTop: 'var(--space-10, 40px)' }}>Result screens</h2>
+      <div className="stack-lg">
+        <ResultCard tone="processing" title="Processing your payment…"><p>Please don’t close or refresh this window.</p></ResultCard>
+        <ResultCard
+          tone="success"
+          title="Payment successful"
+          rows={[
+            { label: 'Transaction ID', value: 'sim_pay_4f2a9c1e' },
+            { label: 'Amount paid', value: formatPaise(TOTAL) },
+            { label: 'Method', value: 'UPI · Google Pay' },
+            { label: 'Booking ref', value: 'APT-1142' },
+          ]}
+          actions={<><Button variant="secondary">Download receipt</Button><Button variant="secondary"><Icon name="calendar" size={16} />Add to calendar</Button><Button>Go to My appointments</Button></>}
+        >
+          <p>Your appointment is confirmed. A copy is saved under My appointments.</p>
+        </ResultCard>
+        <ResultCard tone="fail" title="Payment failed" actions={<><Button>Try again</Button><Button variant="secondary">Choose another method</Button></>}>
+          <p>The UPI payment was declined by your bank.</p>
+          <p>No money was taken. Your slot is still held — <strong>7:42</strong> left.</p>
+        </ResultCard>
       </div>
     </PatientLayout>
   );

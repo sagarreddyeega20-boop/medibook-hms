@@ -25,6 +25,8 @@ interface BoardSlot {
   offSchedule?: boolean;
   appointment?: { id: string; ref: string; patientId: string; status: string; tokenNumber: number | null; reason: string | null; source: string };
   patient: PersonRef | null;
+  /** Prepaid online at booking (the counter collects only tests and medicines), or refunded after a cancel. */
+  payment: 'PAID_ONLINE' | 'REFUNDED' | null;
 }
 interface QueueItem { visitId: string; token: number | null; type: 'OPD' | 'WALK_IN'; patient: PersonRef | null; slotStart: string | null; arrivedAt: string }
 interface BoardDoctor {
@@ -119,8 +121,8 @@ export function ReceptionBoard() {
         state: s.state,
         past: s.past,
         selected: s.start === slotStart,
-        sub: s.patient && s.state !== 'CANCELLED' ? `${s.appointment?.tokenNumber ? `T${s.appointment.tokenNumber} · ` : ''}${short(s.patient.name)}` : s.heldByMe ? 'Held by you' : s.past && s.state === 'FREE' ? 'Past' : undefined,
-        title: s.patient ? `${s.patient.name} · ${s.appointment?.ref}` : undefined,
+        sub: s.patient && s.state !== 'CANCELLED' ? `${s.appointment?.tokenNumber ? `T${s.appointment.tokenNumber} · ` : ''}${short(s.patient.name)}${s.payment === 'PAID_ONLINE' ? ' · Paid' : ''}` : s.heldByMe ? 'Held by you' : s.past && s.state === 'FREE' ? 'Past' : undefined,
+        title: s.patient ? `${s.patient.name} · ${s.appointment?.ref}${s.payment === 'PAID_ONLINE' ? ' · paid online' : ''}` : undefined,
       })),
     [doctor, slotStart],
   );
@@ -353,7 +355,7 @@ function SlotPanel({ doctor, slot, isToday, moving, onMove, referral, onReferral
   return (
     <Card title={timeLabel(slot.start)} subtitle={`${doctor.name} · ${when}`} actions={<Button variant="ghost" size="sm" onClick={onClose}>Close</Button>}>
       <div className="stack">
-        <div className="row">{slot.state === 'HELD' ? <Badge tone="pending">{slot.heldByMe ? 'Held by you' : 'Held'}</Badge> : <Badge status={slot.state === 'FREE' ? 'FREE' : slot.state} />}{slot.past && <Badge tone="neutral" size="sm">Past</Badge>}</div>
+        <div className="row">{slot.state === 'HELD' ? <Badge tone="pending">{slot.heldByMe ? 'Held by you' : 'Held'}</Badge> : <Badge status={slot.state === 'FREE' ? 'FREE' : slot.state} />}{slot.payment && <Badge status={slot.payment} />}{slot.past && <Badge tone="neutral" size="sm">Past</Badge>}</div>
 
         {active && slot.patient && (
           <PersonList items={[{ key: 'p', name: slot.patient.name, sub: `${slot.patient.mrn}${slot.patient.phone ? ` · ${slot.patient.phone}` : ''}`, action: <Badge status={a.source} size="sm" /> }]} />

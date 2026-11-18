@@ -112,6 +112,32 @@ export function OrDivider({ children = 'or' }: { children?: ReactNode }) {
   return <p className="mb-or">{children}</p>;
 }
 
+/* ---------- Result screen (v1: processing / payment successful / payment failed / slot expired) ---------- */
+
+interface ResultCardProps {
+  tone: 'processing' | 'success' | 'fail';
+  title: string;
+  /** Muted lines under the title. */
+  children?: ReactNode;
+  rows?: { label: string; value: ReactNode }[];
+  actions?: ReactNode;
+}
+
+/** v1 full-width result card: round icon, title, muted text, receipt rows, actions. */
+export function ResultCard({ tone, title, children, rows, actions }: ResultCardProps) {
+  return (
+    <section className={cx('mb-card mb-result', `mb-result--${tone}`)} aria-live={tone === 'processing' ? 'assertive' : 'polite'} tabIndex={-1}>
+      <span className="mb-result__icon" aria-hidden="true">
+        {tone === 'processing' ? <span className="mb-spinner mb-result__spinner" /> : <Icon name={tone === 'success' ? 'check' : 'close'} size={28} strokeWidth={3} />}
+      </span>
+      <h2 className="mb-result__title">{title}</h2>
+      {children && <div className="mb-result__text">{children}</div>}
+      {rows && rows.length > 0 && <SummaryRows rows={rows} />}
+      {actions && <div className="mb-result__actions">{actions}</div>}
+    </section>
+  );
+}
+
 /** Trust line under the pay button. */
 export function TrustNote({ children }: { children: ReactNode }) {
   return <p className="mb-trust"><Icon name="lock" size={14} />{children}</p>;

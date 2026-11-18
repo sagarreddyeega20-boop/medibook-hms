@@ -111,7 +111,7 @@ export function PatientBill() {
       ) : null,
     },
     { key: 'bill', header: 'Bill', render: (r) => <PersonCell name={r.invoiceNumber} sub={r.visit ? `${r.visit.department} · ${r.visit.doctor} · ${whenLabel(r.visit.startedAt)}` : undefined} /> },
-    { key: 'total', header: 'Total', numeric: true, render: (r) => formatPaise(r.totalPaise) },
+    { key: 'total', header: 'Total', numeric: true, render: (r) => r.paidOnlinePaise > 0 ? <PersonCell name={formatPaise(r.totalPaise)} sub={`${formatPaise(r.paidOnlinePaise)} paid online`} /> : formatPaise(r.totalPaise) },
     { key: 'due', header: 'Balance', numeric: true, render: (r) => <strong>{formatPaise(r.balancePaise)}</strong> },
     {
       key: 'apply', header: 'Pay now (₹)', numeric: true,
@@ -130,7 +130,7 @@ export function PatientBill() {
   const receiptColumns: Column<Receipt>[] = [
     { key: 'r', header: 'Receipt', render: (r) => <PersonCell name={r.receiptNumber} sub={`${whenLabel(r.receivedAt)} · ${r.receivedBy?.name ?? ''}`} /> },
     { key: 'bills', header: 'Bills paid', render: (r) => r.allocations.map((a) => a.invoiceNumber).join(', ') },
-    { key: 'method', header: 'Method', render: (r) => <Badge status={r.method} size="sm">{METHOD_LABELS[r.method]}</Badge> },
+    { key: 'method', header: 'Method', render: (r) => <div className="row"><Badge status={r.method} size="sm">{METHOD_LABELS[r.method]}</Badge>{r.channel === 'ONLINE' && <Badge status="PAID_ONLINE" size="sm" />}</div> },
     { key: 'amt', header: 'Amount', numeric: true, render: (r) => <PersonCell name={formatPaise(r.amountPaise)} sub={r.refundedPaise ? `${formatPaise(r.refundedPaise)} refunded` : r.refunds.some((x) => x.status === 'REQUESTED') ? 'Refund requested' : undefined} /> },
     {
       key: 'act', header: 'Actions',
@@ -236,6 +236,7 @@ export function PatientBill() {
 export function InvoiceModal({ invoice, onClose, printUrl }: { invoice: InvoiceDetail | null; onClose: () => void; printUrl: string }) {
   const columns: Column<InvoiceLine>[] = [
     { key: 'd', header: 'Item', render: (l) => <PersonCell name={l.description} sub={l.department.name} /> },
+    { key: 'p', header: 'Payment', render: (l) => (l.paidOnline ? <Badge status="PAID_ONLINE" size="sm" /> : '—') },
     { key: 'q', header: 'Qty', numeric: true, render: (l) => l.quantity },
     { key: 'r', header: 'Rate', numeric: true, render: (l) => formatPaise(l.unitPricePaise) },
     { key: 't', header: 'Tax', numeric: true, render: (l) => (l.taxPercent ? `${l.taxPercent}% · ${formatPaise(l.taxPaise)}` : '—') },
@@ -261,6 +262,7 @@ export function InvoiceModal({ invoice, onClose, printUrl }: { invoice: InvoiceD
               ...(invoice.discountPaise ? [{ label: 'Discount', value: `− ${formatPaise(invoice.discountPaise)}` }] : []),
               { label: 'Tax (GST)', value: formatPaise(invoice.taxPaise) },
               { label: 'Total', value: formatPaise(invoice.totalPaise) },
+              ...(invoice.paidOnlinePaise ? [{ label: 'Paid online (consultation)', value: formatPaise(invoice.paidOnlinePaise) }] : []),
               { label: 'Paid', value: formatPaise(invoice.paidPaise) },
               { label: 'Balance due', value: <Badge status={invoice.status}>{formatPaise(invoice.balancePaise)}</Badge> },
             ]}

@@ -4,7 +4,7 @@ import {
 } from '../../components';
 import { errorMessage } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { billingApi, METHOD_LABELS, type AccountsDashboard, type Refund } from '../../lib/billing';
+import { billingApi, CHANNEL_LABELS, METHOD_LABELS, type AccountsDashboard, type Refund } from '../../lib/billing';
 import { formatPaise, greeting } from '../../lib/format';
 import { useLive } from '../../lib/live';
 import { addDays, dayLabel, todayKey, whenLabel } from '../../lib/time';
@@ -90,8 +90,8 @@ export function AccountsHome() {
   const txColumns: Column<Tx>[] = [
     { key: 'when', header: 'Date', render: (t) => <PersonCell name={t.receiptNumber} sub={whenLabel(t.receivedAt)} /> },
     { key: 'patient', header: 'Patient', render: (t) => <PersonCell name={t.patient?.name ?? '—'} sub={t.patient?.mrn} /> },
-    { key: 'method', header: 'Method', render: (t) => <Badge status={t.method} size="sm">{METHOD_LABELS[t.method]}</Badge> },
-    { key: 'by', header: 'Recorded by', render: (t) => <PersonCell name={t.receivedBy ?? '—'} sub={t.invoices.join(', ')} /> },
+    { key: 'method', header: 'Method', render: (t) => <div className="row"><Badge status={t.method} size="sm">{METHOD_LABELS[t.method]}</Badge>{t.channel === 'ONLINE' && <Badge status="PAID_ONLINE" size="sm" />}</div> },
+    { key: 'by', header: 'Recorded by', render: (t) => <PersonCell name={t.receivedBy ?? (t.channel === 'ONLINE' ? `Online${t.provider ? ` · ${t.provider}` : ''}` : '—')} sub={t.invoices.join(', ')} /> },
     { key: 'amt', header: 'Amount', numeric: true, render: (t) => <PersonCell name={formatPaise(t.amountPaise)} sub={t.refundedPaise ? `− ${formatPaise(t.refundedPaise)} refunded` : undefined} /> },
   ];
   const refundColumns: Column<Refund>[] = [
@@ -204,6 +204,15 @@ export function AccountsHome() {
               ) : (
                 <p className="muted">{d ? 'No visits in this range.' : 'Loading…'}</p>
               )}
+            </Card>
+            <Card title="Collections by channel" subtitle="Online = consultation fees prepaid when booking">
+              <SummaryRows
+                variant="bill"
+                rows={[
+                  ...(d?.channels ?? []).map((c) => ({ label: `${CHANNEL_LABELS[c.channel]} · ${c.count}`, value: formatPaise(c.amountPaise) })),
+                  { label: 'Refunded online (cancelled bookings)', value: d ? `− ${formatPaise(d.refunds.refunded.amountPaise)}` : '—' },
+                ]}
+              />
             </Card>
             <Card title="Collections by method">
               <SummaryRows

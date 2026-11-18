@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Badge, Button, ChatAppointment, ChatBlock, ChatMessage, ChatPanel, ConfirmationCard, DoctorSlotCard, IdHighlight, Pill, QuickReplies, TypingIndicator,
 } from '../../components';
@@ -33,7 +33,10 @@ export function PatientHome() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [household, setHousehold] = useState<HouseholdMember[]>([]);
   const nextId = useRef(1);
-  const ctx = useRef<{ date?: string; hold?: Hold & { doctor: DirectoryDoctor }; cancelRef?: Appointment }>({});
+  const ctx = useRef<{ date?: string; hold?: Hold & { doctor: DirectoryDoctor }; patientId?: string; cancelRef?: Appointment }>({});
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const shownBooking = useRef<string | null>(null);
   const deptsRef = useRef<Department[]>([]);
   deptsRef.current = departments;
 
@@ -55,6 +58,18 @@ export function PatientHome() {
     bookingApi.household().then(setHousehold).catch(() => undefined);
     reset();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Back from the payment page: show the confirmation inside the chat.
+  useEffect(() => {
+    const ref = params.get('booked');
+    if (!ref || shownBooking.current === ref) return;
+    shownBooking.current = ref;
+    setParams({}, { replace: true });
+    void busy(async () => {
+      const appointment = await bookingApi.byRef(ref);
+      push(bot(appointment.payment === 'PAID_ONLINE' ? 'Payment received — you’re all set.' : 'You’re booked.'), { kind: 'confirmed', appointment }, quick(['My appointments', 'Book another']));
+    });
+  }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Release a pending hold if the patient leaves the page.
   useEffect(() => () => { if (ctx.current.hold) void bookingApi.release(ctx.current.hold.holdId); }, []);
@@ -133,13 +148,32 @@ export function PatientHome() {
       const hold = await bookingApi.hold(doctor.id, slotStart);
       ctx.current.hold = { ...hold, doctor };
       const minutes = Math.round(hold.holdSeconds / 60);
-      const fee = doctor.consultationFeePaise !== null ? ` Consultation fee ${formatPaise(doctor.consultationFeePaise)}, paid at the hospital.` : '';
+      const held = `I’m holding ${sentenceWhen(slotStart)} with ${doctor.name} for ${minutes} minutes.`;
       if (household.length > 1) {
-        push(bot(`I’m holding ${sentenceWhen(slotStart)} with ${doctor.name} for ${minutes} minutes.${fee} Who is the appointment for?`), quick([...household.map((h) => `For ${h.patient.name} (${h.relationship})`), 'Pick another time']));
+        push(bot(`${held} Who is the appointment for?`), quick([...household.map((h) => `For ${h.patient.name} (${h.relationship})`), 'Pick another time']));
       } else {
-        push(bot(`I’m holding ${sentenceWhen(slotStart)} with ${doctor.name} for ${minutes} minutes.${fee} Shall I confirm it?`), quick(['Confirm booking', 'Pick another time']));
+        ctx.current.patientId = household[0]?.patient.id;
+        askPay(held);
       }
     });
+  };
+
+  /** Pay now (payment page) or pay at the hospital (book straight away). */
+  const askPay = (lead = '') => {
+    const d = ctx.current.hold?.doctor;
+    if (!d) return push(bot('Your held slot has expired. Let’s pick a time again.'), quick(START));
+    if (d.consultationFeePaise === null) {
+      return push(bot(`${lead} The consultation fee is paid at the hospital. Shall I confirm it?`.trim()), quick(['Pay at hospital', 'Pick another time']));
+    }
+    push(bot(`${lead} The consultation fee is ${formatPaise(d.consultationFeePaise)}. Pay now online, or pay at the hospital on the day?`.trim()), quick(['Pay now', 'Pay at hospital', 'Pick another time']));
+  };
+
+  const goPay = () => {
+    const hold = ctx.current.hold;
+    const patientId = ctx.current.patientId;
+    if (!hold || !patientId) return push(bot('Your held slot has expired. Let’s pick a time again.'), quick(START));
+    ctx.current.hold = undefined; // the payment page owns the hold now
+    navigate(`/patient/pay?${new URLSearchParams({ hold: hold.holdId, patient: patientId, from: 'chat' })}`);
   };
 
   const confirm = (patientId: string) =>
@@ -159,9 +193,10 @@ export function PatientHome() {
     const lower = t.toLowerCase();
 
     // Answers to the assistant's own questions first.
-    if (lower === 'confirm booking' && household[0]) return void confirm(household[0].patient.id);
+    if ((lower === 'pay at hospital' || lower === 'confirm booking') && ctx.current.patientId) return void confirm(ctx.current.patientId);
+    if (lower === 'pay now' && ctx.current.hold) return goPay();
     const forWho = household.find((h) => lower === `for ${h.patient.name} (${h.relationship})`.toLowerCase());
-    if (forWho) return void confirm(forWho.patient.id);
+    if (forWho) { ctx.current.patientId = forWho.patient.id; return askPay(); }
     if (lower === 'pick another time' || lower === 'another speciality' || lower === 'book an appointment' || lower === 'book another') {
       if (ctx.current.hold) { void bookingApi.release(ctx.current.hold.holdId); ctx.current.hold = undefined; }
       return push(bot('Which speciality do you need? You can also just describe your symptoms.'), quick(deptsRef.current.map((d) => d.name)));
@@ -242,6 +277,7 @@ export function PatientHome() {
                 { label: 'Doctor', value: it.appointment.doctor?.name ?? '' },
                 { label: 'Booking ref', value: it.appointment.ref },
                 { label: 'Patient ID', value: it.appointment.patient?.mrn ?? '' },
+                ...(it.appointment.payment ? [{ label: 'Payment', value: <Badge status={it.appointment.payment} size="sm" /> }] : []),
               ]}
               actions={<Link to="/patient/appointments" className="mb-btn mb-btn--secondary mb-btn--sm">View in My appointments</Link>}
             />

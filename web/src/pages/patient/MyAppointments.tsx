@@ -128,6 +128,7 @@ export function MyAppointments() {
                   `Ref ${a.ref}${a.tokenNumber ? ` · Token T${a.tokenNumber}` : ''}${a.reason ? ` · Reason: ${a.reason}` : ''}${a.cancelReason ? ` · ${a.cancelReason}` : ''}`,
                 ]}
                 status={a.status === 'BOOKED' ? 'CONFIRMED' : a.status}
+                payment={a.payment && (a.status !== 'CANCELLED' || a.payment === 'REFUNDED') ? a.payment : undefined}
                 actions={
                   a.status === 'BOOKED' ? (
                     <>
@@ -167,6 +168,7 @@ export function MyAppointments() {
       >
         <div className="stack">
           {cancelling && <p className="muted">{cancelling.doctor?.name} · {whenLabel(cancelling.slotStart)}</p>}
+          {cancelling?.payment === 'PAID_ONLINE' && <p className="muted">You paid online, so the full amount is refunded to the same account straight away.</p>}
           <Textarea label="Reason" placeholder="e.g. Feeling better / can’t make it" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
         </div>
       </Modal>
