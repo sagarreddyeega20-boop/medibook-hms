@@ -82,6 +82,7 @@ afterAll(async () => {
   const keys = await redis.keys(`hold:slot:${doctor.staffId}:*`);
   if (keys.length) await redis.del(...keys);
   await prisma.queueEvent.deleteMany({ where: { doctorId: doctor.staffId } });
+  await prisma.invoice.deleteMany({ where: { visit: { doctorId: doctor.staffId } } }); // their bills
   await prisma.charge.deleteMany({ where: { visit: { doctorId: doctor.staffId } } }); // consultation charges from finished visits
   await prisma.visit.deleteMany({ where: { doctorId: doctor.staffId } });
   await prisma.appointment.updateMany({ where: { doctorId: doctor.staffId }, data: { rescheduledFromId: null } });

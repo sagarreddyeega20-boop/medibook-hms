@@ -91,6 +91,12 @@ export const staffService = {
     return new Map(rows.map((r) => [r.userId, { name: r.fullName, code: r.staffCode }]));
   },
 
+  /** id → { code, name } for any departments, active or not (reports). */
+  async departmentsByIds(ids: string[]) {
+    const rows = await prisma.department.findMany({ where: { id: { in: [...new Set(ids)] } }, select: { id: true, code: true, name: true, kind: true } });
+    return new Map(rows.map((r) => [r.id, r]));
+  },
+
   departments() {
     return prisma.department.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, code: true, name: true, kind: true } });
   },

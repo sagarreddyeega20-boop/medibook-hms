@@ -24,7 +24,8 @@ export const PERMISSIONS = {
   'appointments:checkin': 'Check patients in, register walk-ins, issue tokens',
   'patients:register': 'Register patients at reception',
   'patients:read_contact': 'Read patient contact details',
-  'payments:collect': 'Record counter payments',
+  'payments:collect': 'Billing counter: record payments, print receipts, close the day',
+  'refunds:request': 'Request a refund on a counter payment',
   // Doctor
   'schedule:own': 'Own schedule',
   'clinical:read': 'Read the timeline of treated patients',
@@ -43,7 +44,7 @@ export const PERMISSIONS = {
   // Accounts
   'accounts:read': 'Revenue and counts by department',
   'transactions:read': 'Transactions by date',
-  'refunds:manage': 'Approve and record refunds',
+  'refunds:manage': 'Approve or reject refunds',
   // Patient (own data only)
   'self:read': 'Own visits, reports and bills',
   'self:book': 'Book own appointments',
@@ -60,12 +61,12 @@ const ADMIN: Permission[] = [
 export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
   SUPER_ADMIN: [...ADMIN, 'staff:create_admin', 'integrations:manage', 'backups:manage'],
   ADMIN,
-  RECEPTIONIST: ['reception:read', 'appointments:book', 'appointments:checkin', 'patients:register', 'patients:read_contact', 'payments:collect'],
+  RECEPTIONIST: ['reception:read', 'appointments:book', 'appointments:checkin', 'patients:register', 'patients:read_contact', 'payments:collect', 'refunds:request'],
   DOCTOR: ['schedule:own', 'clinical:read', 'clinical:write', 'prescriptions:write', 'orders:create', 'referrals:create', 'patients:read_contact'],
   LAB_TECH: ['orders:lab', 'results:upload'],
   RADIOLOGY_TECH: ['orders:radiology', 'results:upload'],
   PHARMACIST: ['prescriptions:read', 'pharmacy:dispense', 'pharmacy:stock'],
-  ACCOUNTS: ['accounts:read', 'transactions:read', 'refunds:manage'],
+  ACCOUNTS: ['accounts:read', 'transactions:read', 'refunds:manage', 'payments:collect'],
   PATIENT: ['self:read', 'self:book', 'family:manage'],
 };
 

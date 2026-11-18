@@ -14,6 +14,14 @@ const visitSelect = {
   id: true, visitNumber: true, patientId: true, appointmentId: true, departmentId: true, doctorId: true, type: true, status: true,
   chiefComplaint: true, tokenNumber: true, startedAt: true, consultStartedAt: true, endedAt: true,
 } satisfies Prisma.VisitSelect;
+export interface VisitBillingHeader {
+  id: string;
+  visitNumber: string;
+  type: VisitType;
+  startedAt: Date;
+  department: string;
+  doctor: string;
+}
 export type VisitRow = Prisma.VisitGetPayload<{ select: typeof visitSelect }>;
 
 export const visitsService = {
@@ -75,6 +83,33 @@ export const visitsService = {
     const { start, end } = localDayRange(dateKey);
     const rows = await prisma.visit.groupBy({ by: ['type'], where: { startedAt: { gte: start, lt: end }, status: { not: 'CANCELLED' } }, _count: true });
     return Object.fromEntries(rows.map((r) => [r.type, r._count])) as Partial<Record<VisitType, number>>;
+  },
+
+  /* ---------------- Billing and accounts (no clinical content) ---------------- */
+
+  /** Visit number, type, date, department and doctor for bills and receipts. */
+  async billingHeaders(ids: string[]) {
+    if (!ids.length) return new Map<string, VisitBillingHeader>();
+    const rows = await prisma.visit.findMany({
+      where: { id: { in: [...new Set(ids)] } },
+      select: { id: true, visitNumber: true, type: true, startedAt: true, department: { select: { name: true } }, doctor: { select: { fullName: true } } },
+    });
+    return new Map<string, VisitBillingHeader>(rows.map((v) => [v.id, { id: v.id, visitNumber: v.visitNumber, type: v.type, startedAt: v.startedAt, department: v.department.name, doctor: v.doctor.fullName }]));
+  },
+
+  /** Counts for the accounts dashboard: visits by type and by department, distinct patients seen. */
+  async statsBetween(start: Date, end: Date) {
+    const where = { startedAt: { gte: start, lt: end }, status: { not: 'CANCELLED' as const } };
+    const [byType, byDept, patients] = await Promise.all([
+      prisma.visit.groupBy({ by: ['type'], where, _count: true }),
+      prisma.visit.groupBy({ by: ['departmentId'], where, _count: true }),
+      prisma.visit.findMany({ where, distinct: ['patientId'], select: { patientId: true } }),
+    ]);
+    return {
+      byType: Object.fromEntries(byType.map((r) => [r.type, r._count])) as Partial<Record<VisitType, number>>,
+      byDepartment: byDept.map((r) => ({ departmentId: r.departmentId, visits: r._count })),
+      patientsSeen: patients.length,
+    };
   },
 
   /* ---------------- Care relationship (used by the access layer) ---------------- */

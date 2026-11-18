@@ -17,6 +17,7 @@ export async function socketRooms(cookieHeader: string | undefined): Promise<str
   if (!session) return [];
   const rooms: string[] = [Rooms.slots, Rooms.user(session.userId)];
   if (session.permissions.includes('reception:read')) rooms.push(Rooms.reception);
+  if (session.permissions.includes('payments:collect') || session.permissions.includes('accounts:read')) rooms.push(Rooms.billing);
   // Department queues: lab / radiology technicians and pharmacists hear "orders:changed" for every department of their kind.
   const kinds = [
     session.permissions.includes('orders:lab') && 'LAB',

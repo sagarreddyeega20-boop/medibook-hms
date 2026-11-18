@@ -15,7 +15,7 @@ export const STATUS_TONES: Record<string, BadgeTone> = {
   // orders
   ORDERED: 'info', SCHEDULED: 'neutral', IN_PROGRESS: 'warning', RESULT_READY: 'success',
   // money
-  DRAFT: 'neutral', ISSUED: 'info', PARTIALLY_PAID: 'pending', PAID: 'success', VOID: 'neutral',
+  DRAFT: 'neutral', ISSUED: 'pending', PARTIALLY_PAID: 'pending', PAID: 'success', VOID: 'neutral',
   PENDING: 'pending', FAILED: 'danger', REFUNDED: 'neutral', PAY_AT_CLINIC: 'neutral',
   // doctor live status
   AVAILABLE: 'success', RUNNING_LATE: 'danger', OFF_DUTY: 'neutral', ON_LEAVE: 'neutral',
@@ -40,6 +40,10 @@ export const STATUS_TONES: Record<string, BadgeTone> = {
   IN_STOCK: 'success', LOW_STOCK: 'warning', OUT_OF_STOCK: 'danger', PURCHASE: 'success', DISPENSE: 'info', ADJUSTMENT: 'neutral', RETURN: 'neutral',
   // department-queue audit events
   ORDER_STARTED: 'warning', RESULT_UPLOADED: 'success', MEDICINE_DISPENSED: 'success', MEDICINE_CREATED: 'primary', MEDICINE_UPDATED: 'pending', STOCK_IN: 'success',
+  // billing: refunds, payment methods, billing audit events
+  REQUESTED: 'pending', APPROVED: 'success', REJECTED: 'danger', CASH: 'neutral', UPI: 'info', CARD: 'info',
+  PAYMENT_RECORDED: 'success', REFUND_REQUESTED: 'pending', REFUND_APPROVED: 'success', REFUND_REJECTED: 'danger',
+  CASH_RECONCILED: 'info', CATALOGUE_UPDATED: 'pending', TRANSACTIONS_EXPORTED: 'neutral', BALANCED: 'success', SHORT: 'danger', OVER: 'warning',
   // visit types / booking source
   OPD: 'info', WALK_IN: 'primary', ONLINE: 'info', RECEPTION: 'neutral', INACTIVE: 'neutral',
 };
@@ -67,6 +71,12 @@ export const STATUS_LABELS: Record<string, string> = {
   PURCHASE: 'Stock in',
   DISPENSE: 'Dispensed',
   ORDER_STARTED: 'Sample / scan taken',
+  ISSUED: 'Unpaid',
+  REQUESTED: 'Refund requested',
+  UPI: 'UPI',
+  BALANCED: 'Cash matches',
+  SHORT: 'Cash short',
+  OVER: 'Cash over',
 };
 
 export const statusLabel = (s: string) =>

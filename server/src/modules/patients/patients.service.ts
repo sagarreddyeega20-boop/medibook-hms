@@ -285,6 +285,11 @@ export const patientsService = {
     ];
   },
 
+  /** New registrations in [start, end) (accounts dashboard). */
+  countRegisteredBetween(start: Date, end: Date) {
+    return prisma.patient.count({ where: { createdAt: { gte: start, lt: end } } });
+  },
+
   /** Patient IDs a portal user may book for and see: themself + their family members. */
   async accessiblePatientIds(userId: string) {
     return (await this.household(userId)).map((h) => h.patient.id);

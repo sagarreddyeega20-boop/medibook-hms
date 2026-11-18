@@ -26,3 +26,4 @@ export { AuthCard, AuthNote, IdHighlight, OtpInput, Segmented, type SegmentOptio
 export { DoctorBoardCard, SLOT_STATE_LABELS, SlotGrid, SlotLegend, type SlotCell, type SlotGridState } from './Booking';
 export { Timeline, type TimelineEntry } from './Timeline';
 export { OptionTiles, OrDivider, OrderSummary, PaymentMethodCard, SummaryRows, TrustNote } from './Payment';
+export { HBarChart, TrendChart } from './Charts';

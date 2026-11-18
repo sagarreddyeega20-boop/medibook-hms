@@ -333,7 +333,9 @@ model Staff {
   stockMovements        StockMovement[]
   queueEvents           QueueEvent[]
   paymentsReceived      Payment[]
-  refundsApproved       Refund[]
+  refundsApproved       Refund[]        @relation("RefundApprovedBy")
+  refundsRequested      Refund[]        @relation("RefundRequestedBy")
+  cashReconciliations   CashReconciliation[]
   invoicesIssued        Invoice[]
   chargesCreated        Charge[]
   consentsRecorded      Consent[]
@@ -852,7 +854,7 @@ model Charge {
 model Invoice {
   id             String        @id @default(uuid()) @db.Uuid
   invoiceNumber  String        @unique @map("invoice_number")
-  visitId        String        @map("visit_id") @db.Uuid // one bill per visit
+  visitId        String        @unique @map("visit_id") @db.Uuid // one bill per visit
   patientId      String        @map("patient_id") @db.Uuid
   status         InvoiceStatus @default(DRAFT)
   subtotalPaise  Int           @default(0) @map("subtotal_paise")
@@ -872,7 +874,6 @@ model Invoice {
   allocations    PaymentAllocation[]
   refunds        Refund[]
 
-  @@index([visitId])
   @@index([patientId])
   @@index([status, createdAt])
   @@map("invoices")
@@ -887,7 +888,9 @@ model InvoiceLine {
   quantity       Int        @default(1)
   unitPricePaise Int        @map("unit_price_paise")
   discountPaise  Int        @default(0) @map("discount_paise")
-  totalPaise     Int        @map("total_paise")
+  totalPaise     Int        @map("total_paise") // net of discount, before tax
+  taxPercent     Int        @default(0) @map("tax_percent") // snapshot of the catalogue item's rate
+  taxPaise       Int        @default(0) @map("tax_paise")
 
   invoice        Invoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   charge         Charge?    @relation(fields: [chargeId], references: [id])
@@ -944,16 +947,39 @@ model Refund {
   method       PaymentMethod
   reason       String
   status       RefundStatus @default(REQUESTED)
-  approvedById String?      @map("approved_by_id") @db.Uuid
+  requestedById String?     @map("requested_by_id") @db.Uuid
+  approvedById String?      @map("approved_by_id") @db.Uuid // the ACCOUNTS user who approved or rejected
+  decisionNote String?      @map("decision_note")
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   processedAt  DateTime?    @map("processed_at") @db.Timestamptz(3)
 
   payment      Payment      @relation(fields: [paymentId], references: [id])
   invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
-  approvedBy   Staff?       @relation(fields: [approvedById], references: [id])
+  requestedBy  Staff?       @relation("RefundRequestedBy", fields: [requestedById], references: [id])
+  approvedBy   Staff?       @relation("RefundApprovedBy", fields: [approvedById], references: [id])
 
   @@index([createdAt])
+  @@index([status])
   @@map("refunds")
+}
+
+// End-of-day cash reconciliation at the billing counter: expected totals by method vs counted cash.
+model CashReconciliation {
+  id                String   @id @default(uuid()) @db.Uuid
+  businessDate      String   @unique @map("business_date") // hospital-local date, YYYY-MM-DD
+  expectedCashPaise Int      @map("expected_cash_paise") // cash received − cash refunds paid
+  expectedUpiPaise  Int      @map("expected_upi_paise")
+  expectedCardPaise Int      @map("expected_card_paise")
+  countedCashPaise  Int      @map("counted_cash_paise")
+  differencePaise   Int      @map("difference_paise") // counted − expected (negative = short)
+  paymentCount      Int      @map("payment_count")
+  note              String?
+  closedById        String   @map("closed_by_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  closedBy          Staff    @relation(fields: [closedById], references: [id])
+
+  @@map("cash_reconciliations")
 }
 
 // =====================================================================

@@ -496,6 +496,7 @@ export const ordersService = {
 
     await this.notifyResultReady(o, input.isAbnormal);
     emitTo(Rooms.department(o.targetDepartmentId), 'orders:changed', { type: o.type, orderId: o.id });
+    billingService.notifyCharged(o.patientId);
     return this.queueItem(o.id);
   },
 

@@ -177,7 +177,8 @@ async function main() {
 
   for (const c of catalogue) {
     const data = { name: c.name, category: c.category, departmentId: deptIds[c.dept]!, pricePaise: c.pricePaise };
-    await prisma.serviceCatalogue.upsert({ where: { code: c.code }, update: data, create: { code: c.code, ...data } });
+    // Consultations, tests and scans are GST-exempt: tax 0 on create; re-seeding never overrides a rate the admin changed.
+    await prisma.serviceCatalogue.upsert({ where: { code: c.code }, update: data, create: { code: c.code, ...data, taxPercent: 0 } });
   }
 
   for (const s of settings) {

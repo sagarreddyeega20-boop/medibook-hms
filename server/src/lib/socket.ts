@@ -7,6 +7,8 @@ export const Rooms = {
   reception: 'reception',
   /** Anyone looking at free slots (patient portal, admin): told when a doctor's day changes. */
   slots: 'slots',
+  /** Billing counter and accounts: told when an invoice, payment, refund or reconciliation changes. */
+  billing: 'billing',
   department: (id: string) => `dept:${id}`,
   doctor: (id: string) => `doctor:${id}`,
   user: (id: string) => `user:${id}`,

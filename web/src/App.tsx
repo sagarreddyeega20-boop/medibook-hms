@@ -1,5 +1,10 @@
 import { Route, Routes } from 'react-router-dom';
+import { AccountsHome } from './pages/accounts/AccountsHome';
 import { AuditLog } from './pages/admin/AuditLog';
+import { PriceList } from './pages/admin/PriceList';
+import { BillingCounter } from './pages/billing/BillingCounter';
+import { CloseDay } from './pages/billing/CloseDay';
+import { PatientBill } from './pages/billing/PatientBill';
 import { Departments } from './pages/admin/Departments';
 import { Doctors } from './pages/admin/Doctors';
 import { StaffRoles } from './pages/admin/StaffRoles';
@@ -19,6 +24,7 @@ import { Home } from './pages/Home';
 import { NotFound } from './pages/NotFound';
 import { FindDoctor } from './pages/patient/FindDoctor';
 import { MyAppointments } from './pages/patient/MyAppointments';
+import { MyBills } from './pages/patient/MyBills';
 import { PatientHome } from './pages/patient/PatientHome';
 import { Dispense } from './pages/pharmacy/Dispense';
 import { PharmacyHome } from './pages/pharmacy/PharmacyHome';
@@ -31,6 +37,7 @@ import { RequireAuth, RootRedirect } from './lib/auth';
 import type { Role } from './lib/roles';
 
 const ADMINS: Role[] = ['SUPER_ADMIN', 'ADMIN'];
+const COUNTER: Role[] = ['RECEPTIONIST', 'ACCOUNTS'];
 const guard = (roles: Role[], el: JSX.Element) => <RequireAuth roles={roles}>{el}</RequireAuth>;
 
 export function App() {
@@ -49,6 +56,7 @@ export function App() {
       <Route path="/admin/audit" element={guard(ADMINS, <AuditLog />)} />
       <Route path="/admin/departments" element={guard(ADMINS, <Departments />)} />
       <Route path="/admin/doctors" element={guard(ADMINS, <Doctors />)} />
+      <Route path="/admin/prices" element={guard(ADMINS, <PriceList />)} />
       <Route path="/reception" element={guard(['RECEPTIONIST'], <ReceptionBoard />)} />
       <Route path="/reception/patients" element={guard(['RECEPTIONIST'], <Patients />)} />
       <Route path="/doctor" element={guard(['DOCTOR'], <DoctorHome />)} />
@@ -59,10 +67,14 @@ export function App() {
       <Route path="/pharmacy" element={guard(['PHARMACIST'], <PharmacyHome />)} />
       <Route path="/pharmacy/dispense/:id" element={guard(['PHARMACIST'], <Dispense />)} />
       <Route path="/pharmacy/stock" element={guard(['PHARMACIST'], <PharmacyStock />)} />
-      <Route path="/accounts" element={guard(['ACCOUNTS'], <RoleHome />)} />
+      <Route path="/billing" element={guard(COUNTER, <BillingCounter />)} />
+      <Route path="/billing/patients/:patientId" element={guard(COUNTER, <PatientBill />)} />
+      <Route path="/billing/close-day" element={guard(COUNTER, <CloseDay />)} />
+      <Route path="/accounts" element={guard(['ACCOUNTS'], <AccountsHome />)} />
       <Route path="/patient" element={guard(['PATIENT'], <PatientHome />)} />
       <Route path="/patient/doctors" element={guard(['PATIENT'], <FindDoctor />)} />
       <Route path="/patient/appointments" element={guard(['PATIENT'], <MyAppointments />)} />
+      <Route path="/patient/bills" element={guard(['PATIENT'], <MyBills />)} />
 
       {/* Developer reference: foundation overview + v1 pattern demos */}
       <Route path="/demo" element={<Home />} />

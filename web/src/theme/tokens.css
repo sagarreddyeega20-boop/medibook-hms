@@ -46,6 +46,10 @@
   --info: #1D4ED8;
   --info-soft: #DBEAFE;
   --info-border: #BFDBFE;
+  /* Charts: a colour-blind-safe pair (validated: CVD ΔE 24.7, contrast ≥ 3:1 on white). Series 1, series 2. */
+  --chart-1: #2A78D6;
+  --chart-2: #EB6834;
+  --chart-track: #EEF2F6;
   --neutral-soft: #F1F5F9;
   --neutral-text: #475569;
   --danger-outline: #FCA5A5;

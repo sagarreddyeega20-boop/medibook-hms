@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import {
+  HBarChart, TrendChart,
   AppShell, AuthCard, AuthNote, Badge, Button, Card, EmptyState, IdHighlight, Input, Modal, OtpInput, Segmented, Select, Table, Tabs, useToast,
   type Column,
 } from '../components';
+import { formatPaise } from '../lib/format';
 import { demoUser, foundationNav } from '../lib/nav';
 
 interface DemoOrder {
@@ -158,6 +160,23 @@ export function ComponentsDemo() {
         </Card>
         <Card title="Empty state">
           <EmptyState title="No appointments today" text="Bookings made at reception or online will appear here in real time." action={<Button variant="soft" size="sm">Register walk-in</Button>} />
+        </Card>
+      </div>
+
+      <div className="grid-2">
+        <Card title="HBarChart (accounts: revenue by department)" subtitle="One series, --chart-1, value + share at the bar end; hidden table for screen readers">
+          <HBarChart caption="Demo revenue by department" data={[
+            { key: 'c', label: 'Cardiology', value: 240000, valueLabel: <>{formatPaise(240000)}<small>48%</small></> },
+            { key: 'l', label: 'Laboratory', value: 120000, valueLabel: <>{formatPaise(120000)}<small>24%</small></> },
+            { key: 'p', label: 'Pharmacy', value: 84000, valueLabel: <>{formatPaise(84000)}<small>17%</small></> },
+            { key: 'n', label: 'Nutrition', value: 56000, valueLabel: <>{formatPaise(56000)}<small>11%</small></> },
+          ]} />
+        </Card>
+        <Card title="TrendChart (accounts: daily revenue)" subtitle="Two series on one axis (--chart-1 / --chart-2), legend, crosshair tooltip on hover">
+          <TrendChart caption="Demo daily revenue" format={formatPaise} labels={['8 Nov', '9 Nov', '10 Nov', '11 Nov', '12 Nov', '13 Nov', '14 Nov']} series={[
+            { key: 'b', label: 'Billed', values: [180000, 220000, 160000, 260000, 240000, 300000, 210000] },
+            { key: 'c', label: 'Collected', values: [150000, 210000, 170000, 230000, 250000, 260000, 190000] },
+          ]} />
         </Card>
       </div>
 

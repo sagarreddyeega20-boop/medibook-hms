@@ -41,6 +41,7 @@ const MENU: MenuItem[] = [
   { to: '/admin/staff', label: 'Staff & roles', icon: 'lock', roles: ['SUPER_ADMIN', 'ADMIN'], permission: 'staff:read' },
   { to: '/admin/departments', label: 'Departments', icon: 'clinic', roles: ['SUPER_ADMIN', 'ADMIN'], permission: 'departments:manage' },
   { to: '/admin/doctors', label: 'Doctors & schedules', icon: 'calendar', roles: ['SUPER_ADMIN', 'ADMIN'], permission: 'schedules:manage' },
+  { to: '/admin/prices', label: 'Prices & tax', icon: 'wallet', roles: ['SUPER_ADMIN', 'ADMIN'], permission: 'fees:manage' },
   { to: '/admin/audit', label: 'Audit log', icon: 'search', roles: ['SUPER_ADMIN', 'ADMIN'], permission: 'audit:read' },
   { to: '/reception', label: 'Live board', icon: 'calendar', roles: ['RECEPTIONIST'], permission: 'reception:read', end: true },
   { to: '/reception/patients', label: 'Patients', icon: 'search', roles: ['RECEPTIONIST'], permission: 'patients:register' },
@@ -50,6 +51,8 @@ const MENU: MenuItem[] = [
   { to: '/pharmacy', label: 'Prescriptions', icon: 'wallet', roles: ['PHARMACIST'], permission: 'pharmacy:dispense', end: true },
   { to: '/pharmacy/stock', label: 'Stock', icon: 'clinic', roles: ['PHARMACIST'], permission: 'pharmacy:stock' },
   { to: '/accounts', label: 'Overview', icon: 'bank', roles: ['ACCOUNTS'], permission: 'accounts:read' },
+  { to: '/billing', label: 'Billing counter', icon: 'wallet', roles: ['RECEPTIONIST', 'ACCOUNTS'], permission: 'payments:collect', end: true },
+  { to: '/billing/close-day', label: 'Close the day', icon: 'card', roles: ['RECEPTIONIST', 'ACCOUNTS'], permission: 'payments:collect' },
 ];
 
 export function navFor(user: { role: Role; permissions: string[] }): NavSection[] {

@@ -217,6 +217,7 @@ export const pharmacyService = {
       return { status, lines: out };
     });
     await emitPharmacy();
+    billingService.notifyCharged();
     return { ...result, view: await this.dispenseView(prescriptionId) };
   },
 

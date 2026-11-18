@@ -211,3 +211,7 @@
 .mb-empty__action { margin-top: var(--space-3); }
 
 /* AppShell / PatientLayout and the v1 page patterns live in patterns.css */
+
+/* Checkbox (table row selection) */
+.mb-check { width: 18px; height: 18px; margin: 0; accent-color: var(--primary); cursor: pointer; }
+.mb-check:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 4px; }

@@ -236,6 +236,7 @@ export const receptionService = {
       return v;
     });
     emitScheduleChanged({ doctorId: visit.doctorId, date: localDateKey(), kind: 'consult-ended' });
+    billingService.notifyCharged(visit.patientId);
     return visit;
   },
 };

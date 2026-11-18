@@ -16,6 +16,7 @@ export function PatientShell({ children }: { children: ReactNode }) {
             { to: '/patient', label: 'Home', end: true },
             { to: '/patient/doctors', label: 'Find a doctor' },
             { to: '/patient/appointments', label: 'My appointments' },
+            { to: '/patient/bills', label: 'Bills' },
           ]}
           user={{ name: user.name, onLogout: async () => { await logout(); navigate('/login?tab=patient', { replace: true }); } }}
           cta={<Link to="/patient/doctors" className="mb-btn mb-btn--primary mb-btn--sm">Book a doctor</Link>}

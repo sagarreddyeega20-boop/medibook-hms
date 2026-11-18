@@ -59,6 +59,7 @@ afterAll(async () => {
   const keys = await redis.keys(`hold:slot:${nutri.staffId}:*`);
   if (keys.length) await redis.del(...keys);
   const visitIds = (await prisma.visit.findMany({ where: { patientId }, select: { id: true } })).map((v) => v.id);
+  await prisma.invoice.deleteMany({ where: { visitId: { in: visitIds } } }); // one bill per visit, created with the first charge
   await prisma.charge.deleteMany({ where: { visitId: { in: visitIds } } });
   await prisma.prescription.deleteMany({ where: { patientId } });
   await prisma.referral.deleteMany({ where: { patientId } });

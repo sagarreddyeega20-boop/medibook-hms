@@ -72,6 +72,7 @@ afterAll(async () => {
   const results = await prisma.orderResult.findMany({ where: { order: { patientId } }, select: { id: true } });
   const files = await readdir(path.join(UPLOAD_ROOT, 'results')).catch(() => [] as string[]);
   for (const r of results) for (const f of files.filter((n) => n.startsWith(r.id))) await removeUpload(path.join(UPLOAD_ROOT, 'results', f));
+  await prisma.invoice.deleteMany({ where: { visitId: { in: visitIds } } }); // one bill per visit, created with the first charge
   await prisma.charge.deleteMany({ where: { visitId: { in: visitIds } } });
   const items = await prisma.prescriptionItem.findMany({ where: { prescription: { patientId } }, select: { id: true } });
   const disp = await prisma.dispensation.findMany({ where: { prescriptionItemId: { in: items.map((i) => i.id) } }, select: { id: true } });
