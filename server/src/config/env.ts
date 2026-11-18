@@ -36,6 +36,12 @@ const EnvSchema = z.object({
   OTP_MAX_PER_HOUR: z.coerce.number().int().default(5),
   SLOT_HOLD_SECONDS: z.coerce.number().int().default(600),
 
+  // Request limits on the public auth endpoints (per client IP, fixed window)
+  RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
+  RATE_LIMIT_LOGIN_PER_IP: z.coerce.number().int().positive().default(30),
+  RATE_LIMIT_LOGIN_PER_ACCOUNT: z.coerce.number().int().positive().default(10),
+  RATE_LIMIT_OTP_PER_IP: z.coerce.number().int().positive().default(60),
+
   /** Result attachments (relative to /server). Never served statically. */
   UPLOAD_DIR: z.string().default('uploads'),
 
@@ -56,3 +62,14 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 export const corsOrigins = env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
+
+// CORS is limited to the web app's origin(s): never a wildcard (session cookies are sent with credentials).
+if (corsOrigins.some((o) => o === '*' || !/^https?:\/\/[^/*]+$/.test(o))) {
+  console.error(`CORS_ORIGIN must list exact origins such as http://localhost:5173 (got "${env.CORS_ORIGIN}")`);
+  process.exit(1);
+}
+// The example secret from .env.example must never reach production.
+if (env.NODE_ENV === 'production' && (env.JWT_SECRET.startsWith('change-me') || env.JWT_SECRET.length < 32)) {
+  console.error('JWT_SECRET must be a random string of at least 32 characters in production');
+  process.exit(1);
+}

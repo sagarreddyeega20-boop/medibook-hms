@@ -476,9 +476,8 @@
   .mb-pay-grid { grid-template-columns: minmax(0, 1fr); }
   .mb-summary { position: static; }
 }
-@media (max-width: 760px) {
-  .mb-container { padding: 0 var(--space-4); }
-  .mb-patient__main { padding-top: var(--space-6); padding-bottom: var(--space-10); }
+/* Patient navbar: links + name + logout no longer fit on one row below ~960px (tablets) → menu button. */
+@media (max-width: 960px) {
   .mb-navbar__toggle { display: inline-flex; }
   .mb-navbar__links {
     display: none; position: absolute; top: var(--nav-height); left: 0; right: 0; z-index: 20;
@@ -489,6 +488,10 @@
   .mb-navbar__links.is-open { display: flex; }
   .mb-navbar__link, .mb-navbar__user { padding: var(--space-3) 0; }
   .mb-navbar__links .mb-btn { margin-top: var(--space-2); }
+}
+@media (max-width: 760px) {
+  .mb-container { padding: 0 var(--space-4); }
+  .mb-patient__main { padding-top: var(--space-6); padding-bottom: var(--space-10); }
   .mb-hero-banner { grid-template-columns: auto 1fr; padding: var(--space-4); }
   .mb-hero-banner__stats { grid-column: 1 / -1; grid-auto-flow: row; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
   .mb-appt { grid-template-columns: 56px minmax(0, 1fr); grid-template-areas: "date info" "actions actions"; }

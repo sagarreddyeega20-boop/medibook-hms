@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { isDateKey } from '../../lib/time.js';
-import { validate } from '../../lib/validate.js';
+import { noBody, validate } from '../../lib/validate.js';
 import { clientIp, getSession, requireAuth, requirePermission } from '../auth/auth.middleware.js';
 import { receptionService } from './reception.service.js';
 
@@ -42,10 +42,10 @@ receptionRouter.post(
   },
 );
 
-receptionRouter.post('/visits/:id/call', requirePermission('appointments:checkin'), validate({ params: z.object({ id: uuid }) }), async (req, res) => {
+receptionRouter.post('/visits/:id/call', requirePermission('appointments:checkin'), validate({ params: z.object({ id: uuid }), body: noBody }), async (req, res) => {
   res.json({ visit: await receptionService.callIn(actor(req, res), res.locals.valid.params.id) });
 });
 
-receptionRouter.post('/visits/:id/finish', requirePermission('appointments:checkin'), validate({ params: z.object({ id: uuid }) }), async (req, res) => {
+receptionRouter.post('/visits/:id/finish', requirePermission('appointments:checkin'), validate({ params: z.object({ id: uuid }), body: noBody }), async (req, res) => {
   res.json({ visit: await receptionService.finish(actor(req, res), res.locals.valid.params.id) });
 });

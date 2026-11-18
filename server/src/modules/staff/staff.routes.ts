@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { validate } from '../../lib/validate.js';
+import { noBody, validate } from '../../lib/validate.js';
 import { clientIp, getSession, requireAuth, requirePermission } from '../auth/auth.middleware.js';
 import { STAFF_ROLES } from '../auth/permissions.js';
 import { ROLE_NAMES, staffService } from './staff.service.js';
@@ -56,11 +56,11 @@ staffRouter.patch(
   },
 );
 
-staffRouter.post('/:id/deactivate', requirePermission('staff:deactivate'), validate({ params: idParams }), async (req, res) => {
+staffRouter.post('/:id/deactivate', requirePermission('staff:deactivate'), validate({ params: idParams, body: noBody }), async (req, res) => {
   res.json({ staff: await staffService.deactivate(actor(req, res), res.locals.valid.params.id) });
 });
 
-staffRouter.post('/:id/invite', requirePermission('staff:update'), validate({ params: idParams }), async (req, res) => {
+staffRouter.post('/:id/invite', requirePermission('staff:update'), validate({ params: idParams, body: noBody }), async (req, res) => {
   res.json(await staffService.sendInvite(actor(req, res), res.locals.valid.params.id));
 });
 

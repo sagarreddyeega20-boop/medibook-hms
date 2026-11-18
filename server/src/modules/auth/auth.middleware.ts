@@ -23,7 +23,14 @@ export function getSession(res: Response): SessionData {
 
 export const getSessionToken = (res: Response): string => res.locals.sessionToken as string;
 
-export const requireAuth: RequestHandler = async (req, res, next) => {
+/**
+ * Guards are tagged (`guard`) so the route-protection test can prove every route is guarded:
+ * 'auth' = signed in, 'role' / 'permission' = role check, 'own' = checked against the record in the handler. See src/security.test.ts.
+ */
+export type Guard = RequestHandler & { guard?: 'auth' | 'role' | 'permission' | 'own' };
+const tag = <T extends RequestHandler>(fn: T, guard: NonNullable<Guard['guard']>) => Object.assign(fn, { guard }) as T & Guard;
+
+export const requireAuth: Guard = async (req, res, next) => {
   if (res.locals.session) return next();
   const token = readCookie(req, SESSION_COOKIE);
   const session = token ? await sessionService.touch(token) : null;
@@ -35,6 +42,7 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
   res.locals.sessionToken = token;
   next();
 };
+requireAuth.guard = 'auth';
 
 async function deny(req: Request, session: SessionData, need: Record<string, unknown>): Promise<never> {
   await auditService.recordSafe({
@@ -51,20 +59,27 @@ const chain = (check: (session: SessionData, req: Request) => Promise<void>): Re
 };
 
 /** Allows the listed roles only. */
-export const requireRole = (...roles: RoleCode[]): RequestHandler =>
-  chain(async (s, req) => {
+export const requireRole = (...roles: RoleCode[]): Guard =>
+  tag(chain(async (s, req) => {
     if (!roles.includes(s.role)) await deny(req, s, { needRole: roles });
-  });
+  }), 'role');
 
 /** Requires every listed permission. */
-export const requirePermission = (...permissions: Permission[]): RequestHandler =>
-  chain(async (s, req) => {
+export const requirePermission = (...permissions: Permission[]): Guard =>
+  tag(chain(async (s, req) => {
     const missing = permissions.filter((p) => !s.permissions.includes(p));
     if (missing.length) await deny(req, s, { needPermission: missing });
-  });
+  }), 'permission');
 
 /** Requires at least one of the listed permissions. */
-export const requireAnyPermission = (...permissions: Permission[]): RequestHandler =>
-  chain(async (s, req) => {
+export const requireAnyPermission = (...permissions: Permission[]): Guard =>
+  tag(chain(async (s, req) => {
     if (!permissions.some((p) => s.permissions.includes(p))) await deny(req, s, { needAnyPermission: permissions });
-  });
+  }), 'permission');
+
+/**
+ * Marks a signed-in route whose authorisation is decided inside the handler, against the record itself
+ * (own notifications, own session, a result file checked against queue / care relationship / household).
+ * Every such route is listed with its reason in src/security.test.ts.
+ */
+export const ownDataOnly: Guard = tag((_req, _res, next) => next(), 'own');

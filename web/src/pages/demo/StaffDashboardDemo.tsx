@@ -70,6 +70,10 @@ export function StaffDashboardDemo() {
         }
         side={
           <>
+            <Card title="Refunds to approve">
+              {/* PersonCell wrap: a long sub-line (e.g. a reason) wraps inside a side card instead of widening it */}
+              <PersonCell wrap name="₹300.00 · Rahul Kumar" sub="RCPT-20261112-0004 · UPI · Test billed twice — the patient had the ECG done once and was charged on two bills" />
+            </Card>
             <NowConsultingCard
               patient={{ name: 'Rahul Kumar · 22 M', meta: 'MB-24-00731 · 7 past visits on MediBook' }}
               facts={['11:30 AM · APT-1142']}

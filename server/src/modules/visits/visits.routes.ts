@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { isDateKey } from '../../lib/time.js';
-import { validate } from '../../lib/validate.js';
+import { noBody, validate } from '../../lib/validate.js';
 import { clientIp, getSession, requireAuth, requirePermission } from '../auth/auth.middleware.js';
 import { BREAK_GLASS_MINUTES, careAccess } from '../auth/care-access.service.js';
 import { receptionService } from '../reception/reception.service.js';
@@ -106,14 +106,14 @@ visitsRouter.put(
 );
 
 /** Start consult: the doctor calls in a checked-in patient (the same queue move reception uses). */
-visitsRouter.post('/:id/start', requirePermission('clinical:write'), validate({ params: z.object({ id: uuid }) }), async (req, res) => {
+visitsRouter.post('/:id/start', requirePermission('clinical:write'), validate({ params: z.object({ id: uuid }), body: noBody }), async (req, res) => {
   const a = actor(req, res);
   await clinicalService.ownVisit(a, res.locals.valid.params.id);
   res.json({ visit: await receptionService.callIn(a, res.locals.valid.params.id) });
 });
 
 /** Complete visit: closes it and creates the consultation charge. */
-visitsRouter.post('/:id/complete', requirePermission('clinical:write'), validate({ params: z.object({ id: uuid }) }), async (req, res) => {
+visitsRouter.post('/:id/complete', requirePermission('clinical:write'), validate({ params: z.object({ id: uuid }), body: noBody }), async (req, res) => {
   const a = actor(req, res);
   await clinicalService.ownVisit(a, res.locals.valid.params.id);
   res.json({ visit: await receptionService.finish(a, res.locals.valid.params.id) });

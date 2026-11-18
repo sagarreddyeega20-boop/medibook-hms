@@ -14,6 +14,11 @@ export default defineConfig({
       REDIS_URL: 'redis://localhost:6380',
       JWT_SECRET: 'test-secret-test-secret-test-secret',
       APP_URL: 'http://localhost:5173',
+      CORS_ORIGIN: 'http://localhost:5173',
+      // The suites log in hundreds of times from 127.0.0.1; src/security.test.ts tests the limiter itself.
+      RATE_LIMIT_LOGIN_PER_IP: '100000',
+      RATE_LIMIT_LOGIN_PER_ACCOUNT: '100000',
+      RATE_LIMIT_OTP_PER_IP: '100000',
     },
   },
 });

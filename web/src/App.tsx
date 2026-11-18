@@ -50,7 +50,7 @@ export function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/set-password" element={<SetPassword />} />
 
-      {/* Each role's home (RoleHome = placeholder until that role's module is built) */}
+      {/* Admin console home; every other role has its own home page below */}
       <Route path="/admin" element={guard(ADMINS, <RoleHome />)} />
       <Route path="/admin/staff" element={guard(ADMINS, <StaffRoles />)} />
       <Route path="/admin/audit" element={guard(ADMINS, <AuditLog />)} />

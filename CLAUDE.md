@@ -110,4 +110,8 @@ Captured from MediBook v1 running on its seed data, at 1440px wide (07 at 390px)
 - `npm install` — installs all workspaces
 - `npm run db:migrate` / `npm run db:seed`
 - `npm run dev` — server (http://localhost:4000, `/api/health`) + web (http://localhost:5173)
-- `npm test` — server tests (Vitest)
+- `npm run db:reset` — drop + migrate + seed (demo data dated from today; destroys data)
+- `npm run db:backup` / `npm run db:restore` — pg_dump backups in `backups/` (restore asks for confirmation)
+- `npm test` — server tests (Vitest, incl. `src/security.test.ts` route-protection inventory and backup→restore) + web typecheck
+- `npm run test:e2e` — Playwright: the 8 "MVP done when" steps + responsive checks (own servers on :4400/:5180)
+- New API routes must use `requireAuth` + `requirePermission`/`requireRole` (or `ownDataOnly` with a reason listed in `security.test.ts`) and `validate()` for params/body, or `security.test.ts` fails.

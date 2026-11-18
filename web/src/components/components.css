@@ -109,21 +109,25 @@
 .mb-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 /* v1 schedule table */
 .mb-table th {
-  padding: var(--space-3) var(--space-6);
+  padding: var(--space-3) var(--space-4);
   background: var(--table-head);
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   text-align: left; white-space: nowrap;
   font-size: 12.5px; font-weight: var(--weight-semibold); color: var(--muted);
 }
-.mb-table td { padding: var(--space-4) var(--space-6); border-bottom: 1px solid var(--border); vertical-align: middle; }
+.mb-table td { padding: var(--space-4); border-bottom: 1px solid var(--border); vertical-align: middle; }
 .mb-table tr:last-child td { border-bottom: none; }
 .mb-table tr.is-current td { background: var(--primary-soft); }
 .mb-table--clickable tbody tr { cursor: pointer; }
 .mb-table--clickable tbody tr:hover td { background: var(--table-head); }
-.mb-card--flush .mb-table th:first-child, .mb-card--flush .mb-table td:first-child { padding-left: var(--space-6); }
+/* v1: 24px from the card edge, 16px between columns (so 6-column tables fit the dashboard's main column) */
+.mb-table th:first-child, .mb-table td:first-child { padding-left: var(--space-6); }
+.mb-table th:last-child, .mb-table td:last-child { padding-right: var(--space-6); }
 .mb-person strong { display: block; color: var(--dark); }
 .mb-person span { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.mb-person--wrap { min-width: 0; }
+.mb-person--wrap span { white-space: normal; overflow-wrap: anywhere; }
 .mb-time { font-weight: var(--weight-bold); color: var(--dark); white-space: nowrap; }
 .mb-table td.mb-num, .mb-table th.mb-num { text-align: right; font-variant-numeric: tabular-nums; }
 

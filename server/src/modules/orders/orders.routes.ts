@@ -2,9 +2,9 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
 import { findUpload } from '../../lib/uploads.js';
-import { validate } from '../../lib/validate.js';
+import { noBody, validate } from '../../lib/validate.js';
 import { AuditAction, auditService } from '../audit/audit.service.js';
-import { clientIp, getSession, requireAnyPermission, requireAuth, requirePermission } from '../auth/auth.middleware.js';
+import { clientIp, getSession, ownDataOnly, requireAnyPermission, requireAuth, requirePermission } from '../auth/auth.middleware.js';
 import { careAccess } from '../auth/care-access.service.js';
 import { billingService } from '../billing/billing.service.js';
 import { patientsService } from '../patients/patients.service.js';
@@ -112,7 +112,7 @@ ordersRouter.get('/radiology/dashboard', requirePermission('orders:radiology'), 
 });
 
 /** Sample collected / scan done → IN_PROGRESS. The service checks the order type matches the technician's queue. */
-ordersRouter.post('/:id/start', requireAnyPermission('orders:lab', 'orders:radiology'), validate({ params: z.object({ id: uuid }) }), async (req, res) => {
+ordersRouter.post('/:id/start', requireAnyPermission('orders:lab', 'orders:radiology'), validate({ params: z.object({ id: uuid }), body: noBody }), async (req, res) => {
   res.json({ order: await ordersService.markInProgress(actor(req, res), res.locals.valid.params.id) });
 });
 
@@ -141,7 +141,7 @@ ordersRouter.post(
  *   - the patient (or the family account holder) in the portal.
  * Everyone else gets 403, and the refusal is audited.
  */
-ordersRouter.get('/results/:resultId/file', validate({ params: z.object({ resultId: uuid }) }), async (req, res) => {
+ordersRouter.get('/results/:resultId/file', ownDataOnly, validate({ params: z.object({ resultId: uuid }) }), async (req, res) => {
   const a = actor(req, res);
   const ref = await ordersService.resultRef(res.locals.valid.params.resultId);
   const s = a.session;

@@ -49,8 +49,8 @@ export function PharmacyHome() {
 
   const columns: Column<QueueRow>[] = [
     { key: 'patient', header: 'Patient', render: (r) => <PersonCell name={r.patient?.name ?? 'Patient'} sub={r.patient ? patientMeta(r.patient) : undefined} /> },
-    { key: 'meds', header: 'Medicines', render: (r) => <PersonCell name={`${r.items} item${r.items === 1 ? '' : 's'} · ${r.remaining} to give`} sub={r.medicines.join(', ')} /> },
-    { key: 'doctor', header: 'Prescribed by', render: (r) => <PersonCell name={r.doctor.name} sub={[r.orderNumber, whenLabel(r.createdAt)].filter(Boolean).join(' · ')} /> },
+    { key: 'meds', header: 'Medicines', render: (r) => <PersonCell wrap name={`${r.items} item${r.items === 1 ? '' : 's'} · ${r.remaining} to give`} sub={r.medicines.join(', ')} /> },
+    { key: 'doctor', header: 'Prescribed by', render: (r) => <PersonCell wrap name={r.doctor.name} sub={[r.orderNumber, whenLabel(r.createdAt)].filter(Boolean).join(' · ')} /> },
     { key: 'status', header: 'Status', render: (r) => <Badge status={r.status === 'ACTIVE' ? 'AWAITING' : r.status}>{r.status === 'ACTIVE' ? 'To dispense' : undefined}</Badge> },
     { key: 'action', header: 'Action', render: (r) => <Button size="sm" onClick={() => navigate(`/pharmacy/dispense/${r.id}`)}>Dispense</Button> },
   ];

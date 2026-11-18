@@ -63,9 +63,10 @@ export function Table<T>({ columns, rows, rowKey, onRowClick, isCurrent, empty, 
 }
 
 /** Two-line cell used in v1 tables: bold name over a muted ID line. */
-export function PersonCell({ name, sub }: { name: ReactNode; sub?: ReactNode }) {
+/** Name + muted sub-line. In tables the sub-line stays on one line; `wrap` lets long text (e.g. a reason) wrap in side cards. */
+export function PersonCell({ name, sub, wrap }: { name: ReactNode; sub?: ReactNode; wrap?: boolean }) {
   return (
-    <div className="mb-person">
+    <div className={wrap ? 'mb-person mb-person--wrap' : 'mb-person'}>
       <strong>{name}</strong>
       {sub && <span>{sub}</span>}
     </div>

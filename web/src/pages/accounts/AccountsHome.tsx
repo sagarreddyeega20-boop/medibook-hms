@@ -176,7 +176,7 @@ export function AccountsHome() {
                 <div className="stack">
                   {pending.map((r) => (
                     <div key={r.id} className="stack" style={{ gap: 'var(--space-2)' }}>
-                      <PersonCell name={`${formatPaise(r.amountPaise)} · ${r.patient?.name ?? ''}`} sub={`${r.receiptNumber} · ${METHOD_LABELS[r.method]} · ${r.reason}`} />
+                      <PersonCell wrap name={`${formatPaise(r.amountPaise)} · ${r.patient?.name ?? ''}`} sub={`${r.receiptNumber} · ${METHOD_LABELS[r.method]} · ${r.reason}`} />
                       <div className="row">
                         <Button size="sm" loading={busyId === r.id} onClick={() => void decide(r, 'approve', null)}>Approve</Button>
                         <Button size="sm" variant="danger-outline" disabled={busyId === r.id} onClick={() => setRejecting(r)}>Reject</Button>

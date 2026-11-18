@@ -30,6 +30,7 @@ let resultId: string;
 let medId: string; // a fresh medicine so stock assertions are exact
 let atorName: string; // second test-owned medicine, prescribed as free text (matched by name); never touch seed stock
 const createdMedicineIds: string[] = [];
+const tonicName = `Unlisted herbal tonic ${tag()}`; // unique per run: a leftover row from an interrupted run must not match
 
 const api = (who: string) => ({
   get: (url: string) => request(app).get(url).set('Cookie', cookie[who]!),
@@ -42,7 +43,7 @@ type Item = { id: string; medicineName: string };
 const byName = <T extends Item>(items: T[]) => ({
   q: items.find((i) => i.medicineName === 'Queuemycin')!,
   ator: items.find((i) => i.medicineName === atorName.toUpperCase())!,
-  tonic: items.find((i) => i.medicineName === 'Unlisted herbal tonic')!,
+  tonic: items.find((i) => i.medicineName === tonicName)!,
 });
 
 /** A minimal, valid one-page PDF. */
@@ -52,7 +53,7 @@ beforeAll(async () => {
   await setupInfra();
   captureNotifications();
   cardio = await createStaff('DOCTOR', { department: 'CARD', name: 'Dr. Queue Cardio' });
-  stranger = await createStaff('DOCTOR', { department: 'DERM', name: 'Dr. Queue Stranger' });
+  stranger = await createStaff('DOCTOR', { department: 'ORTHO', name: 'Dr. Queue Stranger' });
   lab = await createStaff('LAB_TECH', { department: 'LAB', name: 'Queue Lab Tech' });
   rad = await createStaff('RADIOLOGY_TECH', { department: 'RAD', name: 'Queue Radiographer' });
   pharm = await createStaff('PHARMACIST', { department: 'PHARM', name: 'Queue Pharmacist' });
@@ -129,7 +130,7 @@ describe('setup: a cardiology consult orders an ECG, a chest X-ray and a prescri
       items: [
         { medicineId: medId, medicineName: 'Queuemycin', dose: '1 capsule', frequency: '1-0-1', durationDays: 6, instructions: 'After food' }, // 12
         { medicineName: atorName.toUpperCase(), frequency: '0-0-1', durationDays: 5 }, // free text → matched by name (any case)
-        { medicineName: 'Unlisted herbal tonic', quantity: 1 },
+        { medicineName: tonicName, quantity: 1 },
       ],
     });
     expect(rx.status).toBe(201);
@@ -298,7 +299,7 @@ describe('pharmacy: dispense, stock down, charge at selling price, exact margin'
 
   it('when every item is complete the prescription is DISPENSED and leaves the queue', async () => {
     // Simulate the last item being given (e.g. the doctor's free-text tonic added to the formulary and dispensed).
-    const m = await api('pharm').post('/api/pharmacy/medicines', { name: 'Unlisted herbal tonic', sellingPricePaise: 5000, purchasePricePaise: 3000, reorderLevel: 2 });
+    const m = await api('pharm').post('/api/pharmacy/medicines', { name: tonicName, sellingPricePaise: 5000, purchasePricePaise: 3000, reorderLevel: 2 });
     createdMedicineIds.push(m.body.medicine.id);
     await api('pharm').post(`/api/pharmacy/medicines/${m.body.medicine.id}/stock-in`, { quantity: 3, unitCostPaise: 3000 }).expect(201);
     const v = (await api('pharm').get(`/api/pharmacy/prescriptions/${rxId}`)).body;

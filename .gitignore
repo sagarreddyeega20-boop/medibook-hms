@@ -12,3 +12,11 @@ coverage/
 
 # Uploaded result files (PDF / image reports), relative to /server
 server/uploads/
+
+# Database backups (npm run db:backup)
+backups/
+
+# Playwright
+test-results/
+playwright-report/
+e2e/.artifacts/

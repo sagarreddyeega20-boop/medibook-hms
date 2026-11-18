@@ -36,7 +36,7 @@ beforeAll(async () => {
   await setupInfra();
   cardio = await createStaff('DOCTOR', { department: 'CARD', name: 'Dr. Test Cardio' });
   nutri = await createStaff('DOCTOR', { department: 'NUTR', name: 'Dr. Test Nutrition' });
-  stranger = await createStaff('DOCTOR', { department: 'DERM', name: 'Dr. Test Stranger' });
+  stranger = await createStaff('DOCTOR', { department: 'ORTHO', name: 'Dr. Test Stranger' });
   admin = await createStaff('ADMIN');
   const others = { reception: await createStaff('RECEPTIONIST'), accounts: await createStaff('ACCOUNTS'), pharmacist: await createStaff('PHARMACIST'), lab: await createStaff('LAB_TECH') };
   // Nutritionist open all day, every day, so the referral can be booked whatever the clock says.
