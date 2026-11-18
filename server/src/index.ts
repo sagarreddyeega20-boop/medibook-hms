@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
+import { verifyMailTransport } from './lib/mailer.js';
 import { prisma } from './lib/prisma.js';
 import { connectRedis, redis } from './lib/redis.js';
 import { initSocket } from './lib/socket.js';
@@ -11,6 +12,7 @@ const server = createServer(app);
 initSocket(server, socketRooms);
 
 connectRedis().catch((err) => console.error('[redis] initial connect failed:', err.message));
+void verifyMailTransport(); // logs the transport and, for smtp, whether the login works; never stops the server
 
 server.listen(env.PORT, () => {
   console.log(`MediBook HMS API listening on http://localhost:${env.PORT} (health: /api/health)`);

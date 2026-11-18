@@ -75,7 +75,8 @@ npx playwright install chromium
 
 **Staff** sign in on the *Staff* tab with staff ID + password, then a 6-digit code sent by email.
 **Patients** use the *Patient* tab with their email, then the code.
-Seeded emails are fake (`.local`), so in development **every code is printed in the `npm run dev` console**:
+Seeded emails are fake (`.local`), so in development **every code is printed in the `npm run dev` console** (with Gmail
+set up, see *Sending real email*, codes for real addresses also arrive by email):
 
 ```
 [otp:dev] doctor@medibook.local → 482913 (expires in 5 min)
@@ -221,8 +222,8 @@ with cron / Task Scheduler for daily backups.
 
 - **No inpatient care**: admissions, beds, wards, nurses, rounds and discharge come in the next release
   (`Visit.type` already reserves `IPD` and `EMERGENCY`). There is no nurse login.
-- **No SMS or WhatsApp**: OTPs, booking confirmations and alerts go by email only. Without SMTP settings, emails are
-  printed in the server console.
+- **No SMS or WhatsApp**: OTPs, booking confirmations and alerts go by email only. Without SMTP settings
+  (or with `MAIL_TRANSPORT=console`), emails are printed in the server console.
 - **Counter payments only**: cash, UPI and card are recorded at the billing counter. There is no online payment gateway
   and no insurance/TPA claims; patients see and download bills in the portal but pay at the hospital.
 - Refunds are approved in the app but paid out manually (cash / UPI / card reversal outside the system).
@@ -250,6 +251,46 @@ docs/     the MVP spec and v1 UI reference screenshots
   Staff are deactivated, never deleted. Role changes end the person's open sessions.
 - **Patients** register at `/register`. The account and the MRN (`MB-YYYY-NNNNNN`) are created only after the email
   code is verified.
-- **Email**: every message goes through `notificationsService.notify(recipient, template, data)`. To send real email,
-  set Gmail SMTP in `.env` (see `.env.example`): `SMTP_HOST=smtp.gmail.com`, your Gmail address as `SMTP_USER`, and a
-  Google **App Password** as `SMTP_PASS`.
+- **Email**: every message goes through `notificationsService.notify(recipient, template, data)`. It is recorded in
+  `notifications` and sent in the background (never blocks the request), retried up to 2 times, then marked `SENT`
+  (with the message ID) or `FAILED` (with the error). See *Sending real email (Gmail)* below.
+
+### Sending real email (Gmail)
+
+1. **Create a Gmail App Password**: Google Account → *Security* → turn on **2-Step Verification**, then open
+   <https://myaccount.google.com/apppasswords>, give it a name (e.g. *MediBook*) and click *Create*. Copy the
+   16-character password.
+2. **Fill in `.env`** (see `.env.example`):
+
+   ```
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=465
+   SMTP_SECURE=true
+   SMTP_USER=you@gmail.com
+   SMTP_PASS=abcdefghijklmnop        # the App Password, no spaces
+   MAIL_FROM="MediBook <you@gmail.com>"
+   ```
+
+3. **Test it**:
+
+   ```bash
+   npm run mail:test -- you@gmail.com
+   ```
+
+   It prints `✓ Test email sent…` or the exact SMTP error.
+4. Restart `npm run dev`. The server logs the active transport, e.g.
+   `[mail] transport=smtp via smtp.gmail.com:465 (TLS) as you@gmail.com`, followed by `[mail] SMTP login OK`.
+
+**`MAIL_TRANSPORT`**: `smtp` sends real email; `console` prints emails to the server log (`[mail:dev]`) and sends
+nothing. When it is empty, smtp is used if `SMTP_USER` and `SMTP_PASS` are set, otherwise console. Tests always use
+console. In development the OTP is also printed (`[otp:dev] …`) even when real email is on, so you can still sign
+in if mail fails. It is never printed in production.
+
+**Troubleshooting**
+
+| Symptom | Fix |
+|---|---|
+| `EAUTH … 535 Username and Password not accepted` | `SMTP_PASS` must be an **App Password**, not your Gmail password; 2-Step Verification must be on; `SMTP_USER` must be the same Google account. Remove any spaces. |
+| `ETIMEDOUT` / `ECONNREFUSED` | The network, firewall or antivirus is blocking SMTP. Try `SMTP_PORT=587` with `SMTP_SECURE=false`, or another network. |
+| Mail "sent" but not in the inbox | Check **Spam** and *All Mail*, and mark it *Not spam* once. |
+| Stops sending after many emails | Gmail allows about **500 emails/day** per account. Failed sends show as `FAILED` in the `notifications` table with the error. |

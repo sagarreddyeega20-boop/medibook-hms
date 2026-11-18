@@ -1,5 +1,5 @@
 import { env } from '../../config/env.js';
-import { sendMail, type MailInput } from '../../lib/mailer.js';
+import { explainMailError, isPermanentMailError, sendMail, type MailInput } from '../../lib/mailer.js';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { emitTo, Rooms } from '../../lib/socket.js';
@@ -45,7 +45,10 @@ export const notificationsService = {
     return results;
   },
 
-  /** Records the email in `notifications`, sends it, and stores the outcome. */
+  /**
+   * Records the email in `notifications` (QUEUED) and returns at once; the send runs in the background so a slow
+   * mail server never delays the HTTP response. The row ends as SENT (with the message ID) or FAILED (with the error).
+   */
   async sendEmail(input: MailInput & { userId?: string; storeBody?: string; template?: string }) {
     const { userId, storeBody, template, ...mail } = input;
     const row = await prisma.notification.create({
@@ -58,16 +61,8 @@ export const notificationsService = {
         data: template ? { template } : undefined,
       },
     });
-    try {
-      await sendMail(mail);
-      return prisma.notification.update({ where: { id: row.id }, data: { status: 'SENT', sentAt: new Date() } });
-    } catch (err) {
-      console.error(`[mail] failed to send "${template ?? mail.subject}" to ${mail.to}: ${err instanceof Error ? err.message : err}`);
-      return prisma.notification.update({
-        where: { id: row.id },
-        data: { status: 'FAILED', error: err instanceof Error ? err.message : String(err) },
-      });
-    }
+    void deliver(row.id, mail, template);
+    return row;
   },
 
   /** In-app alert: stored, then pushed live to the user's socket room. */
@@ -94,4 +89,33 @@ export const notificationsService = {
   },
 };
 
-const inAppSelect = { id: true, subject: true, body: true, data: true, readAt: true, createdAt: true } satisfies Prisma.NotificationSelect;
+/** Backoff before retry 1 and retry 2. A failed send is retried up to 2 times unless the error is permanent (e.g. wrong App Password). */
+const RETRY_DELAYS_MS = [2_000, 6_000];
+
+async function deliver(id: string, mail: MailInput, template?: string) {
+  const label = template ?? mail.subject;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const { messageId } = await sendMail(mail);
+      await prisma.notification.update({
+        where: { id },
+        data: { status: 'SENT', sentAt: new Date(), error: null, data: { ...(template ? { template } : {}), messageId, attempts: attempt + 1 } },
+      });
+      return;
+    } catch (err) {
+      const reason = explainMailError(err);
+      const retry = attempt < RETRY_DELAYS_MS.length && !isPermanentMailError(err);
+      console.error(`[mail] send "${label}" to ${mail.to} failed (attempt ${attempt + 1}${retry ? ', will retry' : ''}): ${reason}`);
+      if (retry) {
+        await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+        continue;
+      }
+      await prisma.notification
+        .update({ where: { id }, data: { status: 'FAILED', error: reason.slice(0, 2000), data: { ...(template ? { template } : {}), attempts: attempt + 1 } } })
+        .catch((e) => console.error('[mail] could not record failure:', e instanceof Error ? e.message : e));
+      return;
+    }
+  }
+}
+
+const inAppSelect ={ id: true, subject: true, body: true, data: true, readAt: true, createdAt: true } satisfies Prisma.NotificationSelect;

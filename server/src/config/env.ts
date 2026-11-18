@@ -45,11 +45,15 @@ const EnvSchema = z.object({
   /** Result attachments (relative to /server). Never served statically. */
   UPLOAD_DIR: z.string().default('uploads'),
 
-  SMTP_HOST: z.string().optional().default(''),
-  SMTP_PORT: z.coerce.number().int().default(587),
-  SMTP_SECURE: bool.default(false),
+  /** smtp = send through Nodemailer; console = print emails to the server log. Unset → smtp when SMTP_USER + SMTP_PASS are set. */
+  MAIL_TRANSPORT: z.preprocess((v) => (v === '' ? undefined : v), z.enum(['smtp', 'console']).optional()),
+  SMTP_HOST: z.string().optional().transform((v) => v || 'smtp.gmail.com'),
+  SMTP_PORT: z.coerce.number().int().default(465),
+  /** Unset → true for port 465 (implicit TLS), false otherwise (STARTTLS). */
+  SMTP_SECURE: z.preprocess((v) => (v === '' ? undefined : v), bool.optional()),
   SMTP_USER: z.string().optional().default(''),
-  SMTP_PASS: z.string().optional().default(''),
+  // Gmail shows App Passwords as "abcd efgh ijkl mnop"; the spaces are not part of the password.
+  SMTP_PASS: z.string().optional().default('').transform((v) => v.replace(/\s+/g, '')),
   MAIL_FROM: z.string().default('MediBook HMS <no-reply@medibook.local>'),
 });
 
