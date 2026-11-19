@@ -24,6 +24,7 @@ patient → appointment (optional) → visit ─┬→ clinical_notes, vitals
   prisma/schema.prisma  FULL schema for all table groups (people/access, scheduling, clinical, pharmacy, money, system)
   prisma/seed.ts
   src/index.ts          http server + Socket.IO bootstrap
+  src/worker/           separate background worker (every minute): appointment + referral reminders, email outbox
   src/app.ts            express app, routes, error handler
   src/config/env.ts     Zod-validated env
   src/lib/              prisma, redis, mailer, socket, errors, validate, money
@@ -109,7 +110,8 @@ Captured from MediBook v1 running on its seed data, at 1440px wide (07 at 390px)
 - `docker compose up -d` — Postgres + Redis
 - `npm install` — installs all workspaces
 - `npm run db:migrate` / `npm run db:seed`
-- `npm run dev` — server (http://localhost:4000, `/api/health`) + web (http://localhost:5173)
+- `npm run dev` — server (http://localhost:4000, `/api/health`) + worker + web (http://localhost:5173). The worker alone: `npm run dev:worker -w server` (prod: `npm run worker -w server`)
+- Background jobs live in the worker, never in web requests. A job that emails claims its row (`… WHERE reminder_sent_at IS NULL`) and calls `notify(…, { tx })` in the same transaction; the worker's outbox pass sends it
 - `npm run db:reset` — drop + migrate + seed (demo data dated from today; destroys data)
 - `npm run db:backup` / `npm run db:restore` — pg_dump backups in `backups/` (restore asks for confirmation)
 - `npm test` — server tests (Vitest, incl. `src/security.test.ts` route-protection inventory and backup→restore) + web typecheck

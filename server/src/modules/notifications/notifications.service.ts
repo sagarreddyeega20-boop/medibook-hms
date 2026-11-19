@@ -19,8 +19,21 @@ export interface Recipient {
 /** Templates whose rendered body must never be stored in the notifications table. */
 const SECRET_TEMPLATES: TemplateName[] = ['otp', 'staff-invite'];
 
+export interface NotifyOptions {
+  /**
+   * Queue the email inside the caller's transaction (outbox). The row commits — or rolls back — together with the
+   * caller's own change (e.g. appointments.reminder_sent_at), and the worker delivers it (deliverOutbox).
+   * Without `tx` the email is recorded and sent straight away, as before.
+   */
+  tx?: Prisma.TransactionClient;
+}
+
+/** A claimed outbox email whose worker died mid-send is retried after this long. */
+const OUTBOX_CLAIM_TIMEOUT_MS = 10 * 60_000;
+const OUTBOX_BATCH = 50;
+
 export const notificationsService = {
-  async notify<T extends TemplateName>(recipient: Recipient, template: T, data: TemplateData[T]) {
+  async notify<T extends TemplateName>(recipient: Recipient, template: T, data: TemplateData[T], opts: NotifyOptions = {}) {
     if (template === 'otp' && env.NODE_ENV === 'development') {
       const d = data as TemplateData['otp'];
       console.log(`[otp:dev] ${recipient.email} → ${d.code} (expires in ${d.minutes} min)`);
@@ -32,6 +45,22 @@ export const notificationsService = {
     const results = [];
     if (recipient.email) {
       const rendered = emailTemplates[template](data as never);
+      if (opts.tx) {
+        if (SECRET_TEMPLATES.includes(template)) throw new Error(`${template} emails are never queued in the outbox`);
+        results.push(
+          await opts.tx.notification.create({
+            data: {
+              userId: recipient.userId ?? undefined,
+              channel: 'EMAIL',
+              recipient: recipient.email,
+              subject: rendered.subject,
+              body: rendered.text,
+              data: { template, outbox: true, html: rendered.html },
+            },
+          }),
+        );
+        return results;
+      }
       results.push(
         await this.sendEmail({
           userId: recipient.userId ?? undefined,
@@ -63,6 +92,28 @@ export const notificationsService = {
     });
     void deliver(row.id, mail, template);
     return row;
+  },
+
+  /**
+   * Worker only: sends the emails queued with notify(..., { tx }). Each row is claimed with one UPDATE … FOR UPDATE
+   * SKIP LOCKED, so two workers never pick the same row; a claim older than 10 minutes (worker died mid-send) is
+   * picked up again. Rows end SENT or FAILED exactly like immediate emails. Returns how many were attempted.
+   */
+  async deliverOutbox(now: Date = new Date()) {
+    const staleBefore = new Date(now.getTime() - OUTBOX_CLAIM_TIMEOUT_MS);
+    const rows = await prisma.$queryRaw<{ id: string; recipient: string; subject: string; body: string; data: { template?: string; html?: string } }[]>`
+      UPDATE notifications SET data = data || jsonb_build_object('claimedAt', ${now.toISOString()}::text)
+      WHERE id IN (
+        SELECT id FROM notifications
+        WHERE channel = 'EMAIL' AND status = 'QUEUED' AND data->>'outbox' = 'true'
+          AND (data->>'claimedAt' IS NULL OR (data->>'claimedAt')::timestamptz < ${staleBefore})
+        ORDER BY created_at
+        LIMIT ${OUTBOX_BATCH}
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING id, recipient, subject, body, data`;
+    await Promise.all(rows.map((r) => deliver(r.id, { to: r.recipient, subject: r.subject, text: r.body, html: r.data.html }, r.data.template)));
+    return rows.length;
   },
 
   /** In-app alert: stored, then pushed live to the user's socket room. */

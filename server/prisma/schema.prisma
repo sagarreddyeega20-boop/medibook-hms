@@ -494,6 +494,7 @@ model Appointment {
   cancelledAt       DateTime?         @map("cancelled_at") @db.Timestamptz(3)
   cancelReason      String?           @map("cancel_reason")
   checkedInAt       DateTime?         @map("checked_in_at") @db.Timestamptz(3)
+  reminderSentAt    DateTime?         @map("reminder_sent_at") @db.Timestamptz(3) // 1-hour reminder queued (worker); never sent twice
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -684,17 +685,18 @@ model OrderResult {
 
 // A referral is an Order of type REFERRAL; this row holds referral-specific detail.
 model Referral {
-  id             String   @id @default(uuid()) @db.Uuid
-  orderId        String   @unique @map("order_id") @db.Uuid
-  patientId      String   @map("patient_id") @db.Uuid
-  fromVisitId    String   @map("from_visit_id") @db.Uuid
-  fromDoctorId   String   @map("from_doctor_id") @db.Uuid
-  toDepartmentId String   @map("to_department_id") @db.Uuid
-  toDoctorId     String?  @map("to_doctor_id") @db.Uuid
-  toVisitId      String?  @map("to_visit_id") @db.Uuid // visit created when referral is seen
+  id             String    @id @default(uuid()) @db.Uuid
+  orderId        String    @unique @map("order_id") @db.Uuid
+  patientId      String    @map("patient_id") @db.Uuid
+  fromVisitId    String    @map("from_visit_id") @db.Uuid
+  fromDoctorId   String    @map("from_doctor_id") @db.Uuid
+  toDepartmentId String    @map("to_department_id") @db.Uuid
+  toDoctorId     String?   @map("to_doctor_id") @db.Uuid
+  toVisitId      String?   @map("to_visit_id") @db.Uuid // visit created when referral is seen
   reason         String
   response       String?
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  reminderSentAt DateTime? @map("reminder_sent_at") @db.Timestamptz(3) // "not booked yet" reminder queued (worker), once
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
   patient      Patient    @relation(fields: [patientId], references: [id])

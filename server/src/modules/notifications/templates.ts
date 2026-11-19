@@ -10,6 +10,35 @@ export interface TemplateData {
   'appointment-cancelled': AppointmentMail;
   'appointment-rescheduled': AppointmentMail;
   'break-glass-alert': BreakGlassMail;
+  'appointment-reminder': AppointmentReminderMail;
+  'referral-created': ReferralMail;
+  'referral-reminder': ReferralMail;
+}
+
+/**
+ * 1 hour before a booked appointment (worker). Logistics only: never diagnosis, notes or results.
+ * `clinic` is where to go (e.g. "Cardiology OPD"); the hospital has no room numbers in the system yet.
+ */
+export interface AppointmentReminderMail {
+  name: string;
+  mrn: string;
+  ref: string;
+  doctor: string;
+  department: string;
+  when: string; // formatted hospital time
+  clinic: string;
+  link: string; // "View appointment"
+}
+
+/** A doctor referred the patient on (created), or the referral is still not booked after 48 hours (reminder). */
+export interface ReferralMail {
+  name: string;
+  mrn: string;
+  fromDoctor: string;
+  department: string;
+  toDoctor?: string; // only when the referral names a doctor
+  reason?: string; // the referral reason as the doctor wrote it for the patient (created email only)
+  link: string; // "Book now"
 }
 
 /** Sent to every Admin when a doctor uses break-glass access. Contains no clinical content. */
@@ -126,7 +155,57 @@ export const emailTemplates: { [K in TemplateName]: (d: TemplateData[K]) => Rend
 <p>Hello ${esc(d.adminName)},</p><p>${esc(intro)}</p>${detailRows(rows)}`, `${d.doctor} opened ${d.mrn}`),
     };
   },
+  'appointment-reminder': (d) => {
+    const rows: [string, string][] = [
+      ['When', d.when],
+      ['Doctor', d.doctor],
+      ['Department', d.department],
+      ['Where', d.clinic],
+      ['Booking ref', d.ref],
+      ['Patient ID', d.mrn],
+    ];
+    const intro = 'This is a reminder that your appointment starts in about an hour.';
+    const checkIn = 'Please check in at the reception desk 10 minutes before your time and show your Patient ID. You will get a queue token, and the clinic will call you by token number.';
+    return {
+      subject: `Reminder: your appointment at ${timeOf(d.when)} with ${d.doctor}`,
+      text: `Hello ${d.name},\n\n${intro}\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\n${checkIn}\n\nView appointment: ${d.link}\n\nCan't make it? Cancel or reschedule from the link above so someone else can have the slot.`,
+      html: layout(`<p style="margin:0 0 12px;display:inline-block;padding:4px 12px;border-radius:999px;background:#E6F4F2;color:#0F766E;font-size:12px;font-weight:700">Starts in about 1 hour</p>
+<p style="margin:0 0 4px;font-size:18px;font-weight:800">Appointment reminder</p>
+<p>Hello ${esc(d.name)},</p><p>${esc(intro)}</p>${detailRows(rows)}
+<p style="margin:0 0 16px;padding:12px 14px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;font-size:13px;color:#1E3A8A"><strong>Check-in:</strong> ${esc(checkIn)}</p>
+<p style="margin:20px 0">${button(d.link, 'View appointment')}</p>
+<p style="font-size:13px;color:#64748B">Can't make it? Cancel or reschedule from the appointment page so someone else can have the slot.</p>`, `${d.when} · ${d.doctor}`),
+    };
+  },
+  'referral-created': (d) =>
+    referralMail(d, 'You have been referred', `${d.fromDoctor} has referred you to ${referralTarget(d)}. Please book an appointment.`),
+  'referral-reminder': (d) =>
+    referralMail(d, 'Your referral is not booked yet', `${d.fromDoctor} referred you to ${referralTarget(d)} two days ago, and it has not been booked yet. Please book a time that suits you.`),
 };
+
+/** "Thu, 19 Nov, 4:30 pm" → "4:30 pm" (the reminder goes out an hour before). */
+const timeOf = (when: string) => when.split(', ').pop() ?? when;
+
+const referralTarget = (d: ReferralMail) => (d.toDoctor ? `${d.toDoctor} (${d.department})` : d.department);
+
+function referralMail(d: ReferralMail, heading: string, intro: string): RenderedEmail {
+  const rows: [string, string][] = [
+    ['Referred by', d.fromDoctor],
+    ['Department', d.department],
+    ...(d.toDoctor ? ([['Doctor', d.toDoctor]] as [string, string][]) : []),
+    ...(d.reason ? ([['Reason', d.reason]] as [string, string][]) : []),
+    ['Patient ID', d.mrn],
+  ];
+  const help = 'You can also book at the reception desk; show your Patient ID.';
+  return {
+    subject: `${heading}: ${d.department}`,
+    text: `Hello ${d.name},\n\n${intro}\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nBook now: ${d.link}\n\n${help}`,
+    html: layout(`<p style="margin:0 0 4px;font-size:18px;font-weight:800">${esc(heading)}</p>
+<p>Hello ${esc(d.name)},</p><p>${esc(intro)}</p>${detailRows(rows)}
+<p style="margin:20px 0">${button(d.link, 'Book now')}</p>
+<p style="font-size:13px;color:#64748B">${esc(help)}<br>Button not working? Paste this into your browser:<br><span style="word-break:break-all">${esc(d.link)}</span></p>`, `${heading} · ${d.department}`),
+  };
+}
 
 function appointmentMail(d: AppointmentMail, heading: string, intro: string): RenderedEmail {
   const rows: [string, string][] = [

@@ -11,7 +11,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "concurrently -k -n server,web -c cyan,magenta \"npm run dev -w server\" \"npm run dev -w web\"",
+    "dev": "concurrently -k -n server,worker,web -c cyan,yellow,magenta \"npm run dev -w server\" \"npm run dev:worker -w server\" \"npm run dev -w web\"",
     "build": "npm run build -w server && npm run build -w web",
     "db:migrate": "npm run db:migrate -w server",
     "db:seed": "npm run db:seed -w server",

@@ -270,6 +270,9 @@ async function assertCanActFor(actor: Actor, patientId: string) {
   }
 }
 
+/** Appointment reminders go out this long before the slot. */
+const REMINDER_LEAD_MS = 60 * 60_000;
+
 const formatRef = (n: number) => `APT-${String(n).padStart(6, '0')}`;
 
 /* ---------------- Schedule validation ---------------- */
@@ -664,5 +667,50 @@ export const schedulingService = {
       id: d.id, name: d.fullName, specialty: d.specialty, department: d.department, consultationFeePaise: d.consultationFeePaise,
       nextFreeSlot: next.get(d.id) ? { start: next.get(d.id)!.start, end: next.get(d.id)!.end } : null,
     }));
+  },
+
+  /* ---------------- Worker: 1-hour appointment reminder ---------------- */
+
+  /**
+   * Run by the worker every minute. Emails the patient once for every BOOKED appointment starting within the next
+   * hour that has no reminder yet. Not for cancelled (or checked-in, no-show…) appointments, nor for ones booked less
+   * than an hour before they start (the confirmation just went out).
+   *
+   * Exactly once: reminder_sent_at is claimed with a conditional UPDATE (… WHERE reminder_sent_at IS NULL) in the
+   * same transaction that queues the email, so a restarted worker or a second worker finds nothing left to send, and a
+   * failed queue rolls the claim back. The worker's outbox pass delivers the queued email.
+   */
+  async sendDueReminders(now: Date = new Date()) {
+    const due = await prisma.appointment.findMany({
+      where: { status: 'BOOKED', reminderSentAt: null, slotStart: { gt: now, lte: new Date(now.getTime() + REMINDER_LEAD_MS) } },
+      select: { id: true, ref: true, patientId: true, doctorId: true, departmentId: true, slotStart: true, createdAt: true },
+      orderBy: { slotStart: 'asc' },
+      take: 500,
+    });
+    const eligible = due.filter((a) => a.slotStart.getTime() - a.createdAt.getTime() >= REMINDER_LEAD_MS);
+    if (!eligible.length) return { queued: 0 };
+    const doctors = await staffService.doctorsByIds([...new Set(eligible.map((a) => a.doctorId))]);
+    let queued = 0;
+    for (const a of eligible) {
+      try {
+        const c = await patientsService.contactFor(a.patientId);
+        if (!c.email) continue; // nothing to send to; reception still sees the booking
+        const d = doctors.get(a.doctorId);
+        const department = d?.department?.id === a.departmentId ? d.department.name : (await staffService.departmentById(a.departmentId)).name;
+        const sent = await prisma.$transaction(async (tx) => {
+          const claim = await tx.appointment.updateMany({ where: { id: a.id, status: 'BOOKED', reminderSentAt: null }, data: { reminderSentAt: now } });
+          if (!claim.count) return false; // another worker got it, or it was cancelled meanwhile
+          await notificationsService.notify({ userId: c.userId, email: c.email }, 'appointment-reminder', {
+            name: c.name, mrn: c.mrn, ref: a.ref, doctor: d?.fullName ?? 'your doctor', department,
+            when: formatLocal(a.slotStart), clinic: `${department} OPD`, link: `${env.APP_URL}/patient/appointments`,
+          }, { tx });
+          return true;
+        });
+        if (sent) queued++;
+      } catch (err) {
+        console.error(`[reminder] ${a.ref} failed:`, err instanceof Error ? err.message : err);
+      }
+    }
+    return { queued };
   },
 };

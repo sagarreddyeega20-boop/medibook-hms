@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { OrderPriority, OrderStatus, OrderType, PrescriptionStatus, Prisma } from '@prisma/client';
+import { env } from '../../config/env.js';
 import { AppError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { nextSequence } from '../../lib/sequence.js';
@@ -80,6 +81,41 @@ async function writableVisit(actor: Actor, visitId: string) {
   if (visit.doctorId !== me.id) throw AppError.forbidden('You can only add orders to your own consultations');
   if (!EDITABLE_VISIT.includes(visit.status)) throw new AppError(409, 'VISIT_CLOSED', 'This visit is already closed.');
   return { me, visit };
+}
+
+/* ---------------- Referral emails (logistics only: who, where, the doctor's stated reason — never results) ---------------- */
+
+const REFERRAL_REMINDER_AFTER_MS = 48 * 3_600_000;
+const REFERRAL_REMINDER_MAX_AGE_MS = 7 * 24 * 3_600_000;
+
+interface ReferralLogistics {
+  orderId: string;
+  fromDoctor: string;
+  toDepartmentId: string;
+  department: string;
+  toDoctorId: string | null;
+  toDoctor: string | null;
+  reason?: string;
+}
+
+/** "Book now" opens Find a doctor with the referral, its department (and doctor) preselected — as in My appointments. */
+function referralMail(c: { name: string; mrn: string }, r: ReferralLogistics) {
+  const q = new URLSearchParams({ referral: r.orderId, department: r.toDepartmentId, ...(r.toDoctorId ? { doctor: r.toDoctorId } : {}) });
+  return {
+    name: c.name, mrn: c.mrn, fromDoctor: r.fromDoctor, department: r.department, toDoctor: r.toDoctor ?? undefined, reason: r.reason,
+    link: `${env.APP_URL}/patient/doctors?${q}`,
+  };
+}
+
+/** After the referral commits. A mail problem never fails the doctor's request. */
+async function notifyReferral(template: 'referral-created', r: ReferralLogistics & { patientId: string }) {
+  try {
+    const c = await patientsService.contactFor(r.patientId);
+    if (!c.email) return;
+    await notificationsService.notify({ userId: c.userId, email: c.email }, template, referralMail(c, r));
+  } catch (err) {
+    console.error(`[notify] ${template} for ${r.orderId} failed:`, err instanceof Error ? err.message : err);
+  }
 }
 
 async function createOrder(
@@ -216,7 +252,52 @@ export const ordersService = {
       return o;
     });
     emitTo(Rooms.reception, 'board:changed', { kind: 'referral', orderId: order.id });
+    await notifyReferral('referral-created', {
+      orderId: order.id, patientId: visit.patientId, fromDoctor: me.fullName, toDepartmentId: dept.id, department: dept.name,
+      toDoctorId: toDoctor?.id ?? null, toDoctor: toDoctor?.fullName ?? null, reason: input.reason.trim(),
+    });
     return this.get(order.id);
+  },
+
+  /**
+   * Run by the worker every minute: one reminder email for each REFERRAL order still ORDERED (not booked) 48 hours
+   * after it was made. referrals.reminder_sent_at is claimed (… WHERE reminder_sent_at IS NULL) in the same
+   * transaction that queues the email, so it goes out once even with a restarted or second worker.
+   * Referrals older than 7 days are left alone (a worker back from a long outage doesn't email stale referrals).
+   */
+  async sendReferralReminders(now: Date = new Date()) {
+    const due = await prisma.referral.findMany({
+      where: {
+        reminderSentAt: null,
+        order: { type: 'REFERRAL', status: 'ORDERED', createdAt: { lte: new Date(now.getTime() - REFERRAL_REMINDER_AFTER_MS), gt: new Date(now.getTime() - REFERRAL_REMINDER_MAX_AGE_MS) } },
+      },
+      select: {
+        id: true, orderId: true, patientId: true, fromDoctor: { select: { fullName: true } },
+        toDepartment: { select: { id: true, name: true } }, toDoctorId: true, toDoctor: { select: { fullName: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 500,
+    });
+    let queued = 0;
+    for (const r of due) {
+      try {
+        const c = await patientsService.contactFor(r.patientId);
+        if (!c.email) continue;
+        const sent = await prisma.$transaction(async (tx) => {
+          const claim = await tx.referral.updateMany({ where: { id: r.id, reminderSentAt: null }, data: { reminderSentAt: now } });
+          if (!claim.count) return false; // another worker got it
+          await notificationsService.notify({ userId: c.userId, email: c.email }, 'referral-reminder', referralMail(c, {
+            orderId: r.orderId, fromDoctor: r.fromDoctor.fullName, toDepartmentId: r.toDepartment.id, department: r.toDepartment.name,
+            toDoctorId: r.toDoctorId, toDoctor: r.toDoctor?.fullName ?? null,
+          }), { tx });
+          return true;
+        });
+        if (sent) queued++;
+      } catch (err) {
+        console.error(`[reminder] referral ${r.orderId} failed:`, err instanceof Error ? err.message : err);
+      }
+    }
+    return { queued };
   },
 
   /* ---------------- Doctor: prescriptions (MEDICATION orders) ---------------- */
