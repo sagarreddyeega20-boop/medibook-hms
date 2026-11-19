@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   HBarChart, TrendChart,
-  AppShell, AuthCard, AuthNote, Badge, Button, Card, EmptyState, IdHighlight, Input, Modal, OtpInput, Segmented, Select, Table, Tabs, useToast,
+  AppShell, AuthCard, AuthNote, Badge, Button, Card, DoctorStatusSelect, EmptyState, StatusDot, IdHighlight, Input, Modal, OtpInput, Segmented, Select, Table, Tabs, useToast,
   type Column,
 } from '../components';
 import { formatPaise } from '../lib/format';
@@ -48,6 +48,7 @@ export function ComponentsDemo() {
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [refDoctor, setRefDoctor] = useState('');
 
   const fakeSave = () => {
     setLoading(true);
@@ -92,7 +93,7 @@ export function ComponentsDemo() {
             <Input label="MRN" value="MB000123" disabled readOnly />
           </div>
         </Card>
-        <Card title="Selects" subtitle="Native select styled with tokens">
+        <Card title="Selects" subtitle="Native select styled with tokens; DoctorStatusSelect for live doctor status">
           <div className="stack">
             <Select
               label="Department"
@@ -113,6 +114,22 @@ export function ComponentsDemo() {
               ]}
             />
             <Select label="Visit type" error="Choose a visit type" placeholder="Select…" options={[{ value: 'OPD', label: 'OPD' }, { value: 'WALK_IN', label: 'Walk-in' }]} />
+            <DoctorStatusSelect
+              label="Doctor (referral picker: StatusDot + status text, green → amber → red)"
+              value={refDoctor}
+              onChange={setRefDoctor}
+              emptyLabel="Any doctor in the department"
+              doctors={[
+                { id: 'd1', name: 'Dr. Ananya Iyer', specialty: 'Interventional', status: 'IN_CONSULTATION', nextFreeSlot: { start: new Date(Date.now() + 2 * 3600_000).toISOString() } },
+                { id: 'd2', name: 'Dr. Rohan Mehta', specialty: 'Cardiology', status: 'ON_LEAVE', nextFreeSlot: { start: new Date(Date.now() + 3 * 86_400_000).toISOString() } },
+                { id: 'd3', name: 'Dr. Kavya Rao', specialty: 'Cardiology', status: 'AVAILABLE', nextFreeSlot: { start: new Date(Date.now() + 1800_000).toISOString() } },
+              ]}
+            />
+            <div className="row">
+              <StatusDot tone="success" /> <span className="muted">Available</span>
+              <StatusDot tone="warning" /> <span className="muted">Busy</span>
+              <StatusDot tone="danger" /> <span className="muted">Away</span>
+            </div>
           </div>
         </Card>
       </div>

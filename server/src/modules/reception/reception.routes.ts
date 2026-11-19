@@ -24,6 +24,16 @@ receptionRouter.get(
   },
 );
 
+/** Calculated status + next free slot per doctor, for the referral doctor picker. Live via "slots:changed". */
+receptionRouter.get(
+  '/doctor-status',
+  requirePermission('referrals:create'),
+  validate({ query: z.object({ departmentId: uuid.optional() }) }),
+  async (_req, res) => {
+    res.json(await receptionService.doctorStatuses({ departmentId: res.locals.valid.query.departmentId }));
+  },
+);
+
 /** Referrals from doctors that reception still has to book with the target department/doctor. */
 receptionRouter.get('/referrals', requirePermission('reception:read'), async (_req, res) => {
   res.json({ referrals: await receptionService.referralsToBook() });

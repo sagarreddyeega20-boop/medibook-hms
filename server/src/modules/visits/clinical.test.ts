@@ -102,6 +102,20 @@ describe('cardiologist consultation', () => {
     expect(start.body.visit.status).toBe('IN_CONSULTATION');
   });
 
+  it('referral doctor picker: the same calculated status as the board — in consultation, on leave, available + next free slot', async () => {
+    await prisma.doctorLeave.create({ data: { doctorId: stranger.staffId, startsAt: new Date(Date.now() - 3600_000), endsAt: new Date(Date.now() + 3600_000), reason: 'Conference' } });
+    expect((await api('reception').get('/api/reception/doctor-status')).status).toBe(403); // referrals:create only
+    const r = await api('cardio').get('/api/reception/doctor-status');
+    expect(r.status).toBe(200);
+    const of = (id: string) => r.body.doctors.find((d: { id: string }) => d.id === id);
+    expect(of(cardio.staffId)).toMatchObject({ status: 'IN_CONSULTATION' });
+    expect(of(stranger.staffId)).toMatchObject({ status: 'ON_LEAVE', leaveReason: 'Conference' });
+    expect(of(nutri.staffId)).toMatchObject({ status: 'AVAILABLE' }); // open all day, nobody waiting
+    expect(of(nutri.staffId).nextFreeSlot?.start).toEqual(expect.any(String));
+    const dept = await api('cardio').get(`/api/reception/doctor-status?departmentId=${of(nutri.staffId).departmentId}`);
+    expect(dept.body.doctors.every((d: { departmentId: string }) => d.departmentId === of(nutri.staffId).departmentId)).toBe(true);
+  });
+
   it('opening the consultation is audited as a VIEW with the patient id', async () => {
     const r = await api('cardio').get(`/api/visits/${cardioVisitId}`);
     expect(r.status).toBe(200);

@@ -138,6 +138,21 @@ export const receptionService = {
     };
   },
 
+  /**
+   * Just the calculated status + next free slot for each doctor (e.g. the referral doctor picker).
+   * A projection of `board()`, so there is one status calculation.
+   */
+  async doctorStatuses(opts: { departmentId?: string } = {}) {
+    const { doctors, generatedAt } = await this.board({ departmentId: opts.departmentId });
+    return {
+      generatedAt,
+      doctors: doctors.map((d) => ({
+        id: d.id, name: d.name, specialty: d.specialty, departmentId: d.department?.id ?? null,
+        status: d.status, lateByMinutes: d.lateByMinutes, leaveReason: d.leaveReason, nextFreeSlot: d.nextFreeSlot,
+      })),
+    };
+  },
+
   /* ---------------- Check-in: booked appointment → OPD visit + token ---------------- */
 
   async checkIn(actor: Actor, appointmentId: string) {

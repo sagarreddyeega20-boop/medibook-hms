@@ -24,6 +24,8 @@ export { AppointmentCard, DateTile, HeroBanner, PersonList, Pill, SideCard } fro
 export { ChatAppointment, ChatBlock, ChatMessage, ChatPanel, ConfirmationCard, DoctorSlotCard, QuickReplies, SlotChip, TypingIndicator } from './Chat';
 export { AuthCard, AuthNote, IdHighlight, OtpInput, Segmented, type SegmentOption } from './Auth';
 export { DoctorBoardCard, SLOT_STATE_LABELS, SlotGrid, SlotLegend, type SlotCell, type SlotGridState } from './Booking';
+export { DOCTOR_DOT_TONES, StatusDot, doctorStatusRank, type DotTone } from './StatusDot';
+export { DoctorStatusSelect, doctorStatusText, sortByDoctorStatus, type DoctorStatusOption } from './DoctorStatusSelect';
 export { Timeline, type TimelineEntry } from './Timeline';
 export { OptionTiles, OrDivider, OrderSummary, PaymentMethodCard, ResultCard, SummaryRows, TrustNote } from './Payment';
 export { HBarChart, TrendChart } from './Charts';

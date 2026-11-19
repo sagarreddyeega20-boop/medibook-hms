@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  Badge, Button, Card, DashGrid, EmptyState, Input, Modal, PersonCell, Select, Table, Tabs, Textarea, useToast, type Column,
+  Badge, Button, Card, DashGrid, DoctorStatusSelect, EmptyState, Input, Modal, PersonCell, Select, Table, Tabs, Textarea, useToast, type Column, type DoctorStatusOption,
 } from '../../components';
 import { api, ApiRequestError, errorMessage } from '../../lib/api';
+import { useLive } from '../../lib/live';
 import { formatPaise } from '../../lib/format';
 import { timeLabel, whenLabel } from '../../lib/time';
 import { StaffLayout } from '../staff/StaffLayout';
@@ -248,9 +249,23 @@ function ReferralForm({ visitId, disabled, onSaved }: { visitId: string; disable
   const [priority, setPriority] = useState('ROUTINE');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const [doctors, setDoctors] = useState<DoctorStatusOption[] | null>(null);
+  const deptRef = useRef(deptId);
+  deptRef.current = deptId;
   useEffect(() => {
     api<{ departments: Target[] }>('/api/orders/referral-targets').then((r) => setTargets(r.departments)).catch(() => undefined);
   }, []);
+  // Live status of the chosen department's doctors (same calculation as the reception board).
+  const loadDoctors = useCallback(async (id: string) => {
+    if (!id) return setDoctors(null);
+    const r = await api<{ doctors: DoctorStatusOption[] }>(`/api/reception/doctor-status?departmentId=${id}`);
+    setDoctors((prev) => (id === deptRef.current ? r.doctors : prev));
+  }, []);
+  useEffect(() => {
+    setDoctors(null);
+    loadDoctors(deptId).catch(() => undefined);
+  }, [deptId, loadDoctors]);
+  useLive(['slots:changed'], () => void loadDoctors(deptRef.current).catch(() => undefined), !!deptId && !disabled);
   const dept = targets.find((t) => t.id === deptId);
   if (disabled) return <p className="muted">This visit is closed. Referrals made during it are listed below.</p>;
   const submit = async () => {
@@ -272,12 +287,14 @@ function ReferralForm({ visitId, disabled, onSaved }: { visitId: string; disable
     <div className="stack">
       <div className="grid-2">
         <Select label="Department" placeholder="Choose a department…" value={deptId} onChange={(e) => { setDeptId(e.target.value); setDoctorId(''); }} options={targets.map((t) => ({ value: t.id, label: t.name }))} />
-        <Select
+        <DoctorStatusSelect
           label="Doctor (optional)"
           value={doctorId}
           disabled={!dept}
-          onChange={(e) => setDoctorId(e.target.value)}
-          options={[{ value: '', label: 'Any doctor in the department' }, ...(dept?.doctors ?? []).map((d) => ({ value: d.id, label: `${d.name}${d.specialty ? ` · ${d.specialty}` : ''}` }))]}
+          loading={!!dept && !doctors}
+          onChange={setDoctorId}
+          emptyLabel="Any doctor in the department"
+          doctors={doctors ?? []}
         />
       </div>
       <Select label="Urgency" value={priority} onChange={(e) => setPriority(e.target.value)} options={PRIORITIES} />

@@ -588,3 +588,29 @@
 /* Date-range filter row (one row above the charts) */
 .mb-range { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
 .mb-range .mb-field { min-width: 150px; flex: 0 1 170px; }
+
+/* ---------- Status dot + doctor picker with live status (referral form) ---------- */
+.mb-status-dot { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--surface); }
+.mb-status-dot--success { background: var(--success); }
+.mb-status-dot--warning { background: var(--warning); }
+.mb-status-dot--danger { background: var(--danger); }
+
+.mb-dselect { position: relative; min-width: 0; }
+.mb-dselect__trigger { display: flex; align-items: center; text-align: left; color: var(--text); cursor: pointer; }
+.mb-dselect__trigger:disabled { cursor: not-allowed; }
+.mb-dselect__value { display: flex; align-items: center; gap: var(--space-2); min-width: 0; overflow: hidden; white-space: nowrap; }
+.mb-dselect__value .mb-dselect__name { overflow: hidden; text-overflow: ellipsis; }
+.mb-dselect__placeholder { color: var(--muted); }
+.mb-dselect__list {
+  position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0;
+  max-height: 320px; overflow-y: auto; margin: 0; padding: var(--space-1); list-style: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-control); box-shadow: var(--shadow-md);
+}
+.mb-dselect__option { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); cursor: pointer; font-size: var(--text-sm); }
+.mb-dselect__option.is-active { background: var(--chip-hover); }
+.mb-dselect__option.is-selected { background: var(--primary-soft); }
+.mb-dselect__dot { margin-top: 5px; }
+.mb-dselect__text { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--space-2); row-gap: 2px; min-width: 0; }
+.mb-dselect__name { font-weight: var(--weight-semibold); color: var(--dark); }
+.mb-dselect__name small { font-weight: var(--weight-regular); color: var(--muted); font-size: var(--text-xs); }
+.mb-dselect__meta { font-size: var(--text-xs); color: var(--muted); }
