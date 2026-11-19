@@ -26,6 +26,9 @@ export interface Appointment {
   cancelReason: string | null;
   tokenNumber: number | null;
   rescheduledFromId: string | null;
+  /** The REFERRAL order this booking fulfils, and who referred. */
+  sourceOrderId?: string | null;
+  referredBy?: { id: string; name: string; department: string | null } | null;
   /** How the consultation is paid: prepaid online, refunded after a cancel, or at the hospital counter. */
   payment?: 'PAID_ONLINE' | 'REFUNDED' | 'PAY_AT_HOSPITAL';
   patient: { id: string; name: string; mrn: string } | null;
@@ -46,8 +49,8 @@ export const bookingApi = {
   slots: (doctorId: string, date: string) => api<{ slots: PortalSlot[]; onLeave: boolean }>(`/api/scheduling/doctors/${doctorId}/slots?date=${date}`),
   hold: (doctorId: string, slotStart: string) => api<{ hold: Hold }>('/api/scheduling/holds', { json: { doctorId, slotStart } }).then((r) => r.hold),
   release: (holdId: string) => api(`/api/scheduling/holds/${holdId}`, { method: 'DELETE' }).catch(() => undefined),
-  book: (holdId: string, patientId: string, reason?: string) =>
-    api<{ appointment: Appointment }>('/api/scheduling/appointments', { json: { holdId, patientId, reason: reason || undefined } }).then((r) => r.appointment),
+  book: (holdId: string, patientId: string, reason?: string, referralOrderId?: string) =>
+    api<{ appointment: Appointment }>('/api/scheduling/appointments', { json: { holdId, patientId, reason: reason || undefined, referralOrderId: referralOrderId || undefined } }).then((r) => r.appointment),
   reschedule: (appointmentId: string, holdId: string) =>
     api<{ appointment: Appointment }>(`/api/scheduling/appointments/${appointmentId}/reschedule`, { json: { holdId } }).then((r) => r.appointment),
   cancel: (appointmentId: string, reason: string) =>

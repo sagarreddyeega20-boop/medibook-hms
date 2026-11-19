@@ -7,6 +7,7 @@ import { errorMessage } from '../../lib/api';
 import { bookingApi, type Appointment, type Department, type DirectoryDoctor, type Hold, type HouseholdMember, type PortalSlot } from '../../lib/booking';
 import { formatPaise } from '../../lib/format';
 import { useLive } from '../../lib/live';
+import { visitsApi, type ReferralToBook } from '../../lib/visits';
 import { addDays, dayLabel, keyOf, relativeDay, timeLabel, todayKey, whenLabel } from '../../lib/time';
 import { mmss, useCountdown } from '../../lib/useCountdown';
 import { PatientShell } from './PatientShell';
@@ -20,6 +21,10 @@ export function FindDoctor() {
   const [params, setParams] = useSearchParams();
   const rescheduleId = params.get('reschedule');
   const rescheduleRef = params.get('ref');
+  // Booking a doctor's referral ("Book now" in My appointments): department (and doctor) come preselected.
+  const referralId = params.get('referral');
+  const referralDoctorId = params.get('doctor');
+  const [referral, setReferral] = useState<ReferralToBook | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
   const deptId = params.get('department') ?? '';
   const [date, setDate] = useState(params.get('date') ?? todayKey());
@@ -35,15 +40,24 @@ export function FindDoctor() {
 
   useEffect(() => {
     bookingApi.departments().then(setDepartments).catch(() => undefined);
-    bookingApi.household().then((h) => { setHousehold(h); setPatientId(h[0]?.patient.id ?? ''); }).catch(() => undefined);
+    bookingApi.household().then((h) => { setHousehold(h); setPatientId((p) => p || (h[0]?.patient.id ?? '')); }).catch(() => undefined);
   }, []);
+  useEffect(() => {
+    if (!referralId) return setReferral(null);
+    visitsApi.referralsToBook().then((rs) => {
+      const r = rs.find((x) => x.orderId === referralId) ?? null;
+      setReferral(r);
+      if (r) setPatientId(r.patientId);
+      else toast.error('This referral is already booked', 'See My appointments.');
+    }).catch(() => undefined);
+  }, [referralId, toast]);
 
   const load = useCallback(async () => {
-    const docs = await bookingApi.doctors(deptId || undefined, date);
+    const docs = (await bookingApi.doctors(deptId || undefined, date)).filter((d) => !referralDoctorId || d.id === referralDoctorId);
     setDoctors(docs);
     const entries = await Promise.all(docs.map(async (d) => [d.id, (await bookingApi.slots(d.id, date)).slots] as const));
     setSlots(Object.fromEntries(entries));
-  }, [deptId, date]);
+  }, [deptId, date, referralDoctorId]);
   useEffect(() => {
     load().catch((err) => toast.error('Could not load doctors', errorMessage(err)));
   }, [load, toast]);
@@ -74,11 +88,13 @@ export function FindDoctor() {
     if (!hold) return;
     setBusy(true);
     try {
-      const a = rescheduleId ? await bookingApi.reschedule(rescheduleId, hold.holdId) : await bookingApi.book(hold.holdId, patientId, reason);
+      const a = rescheduleId
+        ? await bookingApi.reschedule(rescheduleId, hold.holdId)
+        : await bookingApi.book(hold.holdId, referral ? referral.patientId : patientId, reason, referral?.orderId);
       setBooked(a);
       setHold(null);
       setReason('');
-      if (rescheduleId) setParams(deptId ? { department: deptId } : {});
+      if (rescheduleId || referral) setParams(deptId ? { department: deptId } : {});
       void load();
     } catch (err) {
       toast.error('Booking failed', errorMessage(err));
@@ -96,7 +112,12 @@ export function FindDoctor() {
     navigate(`/patient/pay?${new URLSearchParams({ hold: hold.holdId, patient: patientId, from: 'doctors' })}`, { state: { reason } });
   };
 
-  const setDept = (id: string) => setParams({ ...(id ? { department: id } : {}), ...(rescheduleId ? { reschedule: rescheduleId, ref: rescheduleRef ?? '' } : {}) });
+  const setDept = (id: string) => {
+    if (referralId) return; // a referral stays in the department it was sent to
+    setParams({ ...(id ? { department: id } : {}), ...(rescheduleId ? { reschedule: rescheduleId, ref: rescheduleRef ?? '' } : {}) });
+  };
+  /** Referral bookings are confirmed straight away; the consultation is paid at the hospital. */
+  const direct = !!rescheduleId || !!referral;
   const days = Array.from({ length: DAYS }, (_, i) => addDays(todayKey(), i));
   const fee = hold?.doctor.consultationFeePaise ?? 0;
 
@@ -106,15 +127,16 @@ export function FindDoctor() {
         main={
           <div className="stack-lg">
             <div>
-              <p className="mb-eyebrow">{rescheduleId ? `Rescheduling ${rescheduleRef ?? ''}` : 'Book an appointment'}</p>
-              <h1 className="mb-page-title">Find a doctor</h1>
+              <p className="mb-eyebrow">{rescheduleId ? `Rescheduling ${rescheduleRef ?? ''}` : referral ? `Referral from ${referral.fromDoctor.name}` : 'Book an appointment'}</p>
+              <h1 className="mb-page-title">{referral ? `Book your ${referral.toDepartment.name} referral` : 'Find a doctor'}</h1>
+              {referral?.reason && <p className="muted">Reason: {referral.reason}</p>}
             </div>
             <Card>
               <div className="stack">
                 <p className="mb-label">Department</p>
                 <div className="mb-chips" role="group" aria-label="Department">
-                  <Pill selected={!deptId} onClick={() => setDept('')}>All</Pill>
-                  {departments.map((d) => <Pill key={d.id} selected={deptId === d.id} onClick={() => setDept(d.id)}>{d.name}</Pill>)}
+                  {!referralId && <Pill selected={!deptId} onClick={() => setDept('')}>All</Pill>}
+                  {departments.filter((d) => !referralId || d.id === deptId).map((d) => <Pill key={d.id} selected={deptId === d.id} onClick={() => setDept(d.id)}>{d.name}</Pill>)}
                 </div>
                 <p className="mb-label">Day</p>
                 <div className="mb-chips" role="group" aria-label="Day">
@@ -163,6 +185,7 @@ export function FindDoctor() {
                     { label: 'Doctor', value: booked.doctor?.name ?? '' },
                     { label: 'Booking ref', value: booked.ref },
                     { label: 'Patient ID', value: booked.patient?.mrn ?? '' },
+                    ...(booked.referredBy ? [{ label: 'Referred by', value: booked.referredBy.name }] : []),
                   ]}
                   actions={<Button variant="secondary" size="sm" onClick={() => navigate('/patient/appointments')}>My appointments</Button>}
                 />
@@ -170,22 +193,29 @@ export function FindDoctor() {
             ) : hold ? (
               <>
                 <OrderSummary
-                  title={rescheduleId ? 'New time' : 'Your booking'}
+                  title={rescheduleId ? 'New time' : referral ? 'Your referral booking' : 'Your booking'}
                   hold={{ label: 'Slot held for', remaining: left > 0 ? mmss(left) : 'expired', low: left < 60 }}
                   doctor={{ name: hold.doctor.name, speciality: hold.doctor.department.name }}
-                  details={[{ label: 'When', value: whenLabel(hold.slotStart) }, ...(rescheduleRef ? [{ label: 'Replaces', value: rescheduleRef }] : [])]}
+                  details={[
+                    { label: 'When', value: whenLabel(hold.slotStart) },
+                    ...(rescheduleRef ? [{ label: 'Replaces', value: rescheduleRef }] : []),
+                    ...(referral ? [{ label: 'Referred by', value: referral.fromDoctor.name }, ...(referral.patient ? [{ label: 'Patient', value: referral.patient.name }] : [])] : []),
+                  ]}
                   bill={rescheduleId ? [] : [{ label: 'Consultation', paise: fee }]}
                   totalPaise={rescheduleId ? 0 : fee}
                 />
                 <Card>
                   <div className="stack">
-                    {!rescheduleId && household.length > 1 && (
+                    {!direct && household.length > 1 && (
                       <Select label="Booking for" value={patientId} options={household.map((h) => ({ value: h.patient.id, label: `${h.patient.name} (${h.relationship})` }))} onChange={(e) => setPatientId(e.target.value)} />
                     )}
-                    {!rescheduleId && <Textarea label="Reason for visit (optional)" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />}
-                    <Button size="lg" block loading={busy} disabled={left === 0 || !patientId} onClick={rescheduleId ? confirm : toPayment}>{rescheduleId ? 'Move my appointment' : 'Continue to payment'}</Button>
+                    {!direct && <Textarea label="Reason for visit (optional)" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />}
+                    <Button size="lg" block loading={busy} disabled={left === 0 || !patientId} onClick={direct ? confirm : toPayment}>
+                      {rescheduleId ? 'Move my appointment' : referral ? 'Confirm referral booking' : 'Continue to payment'}
+                    </Button>
                     <Button variant="ghost" block onClick={() => { void bookingApi.release(hold.holdId); setHold(null); }}>Choose another time</Button>
-                    {!rescheduleId && <TrustNote>Next: pay online now, or choose to pay at the hospital.</TrustNote>}
+                    {!direct && <TrustNote>Next: pay online now, or choose to pay at the hospital.</TrustNote>}
+                    {referral && <TrustNote>The consultation is paid at the hospital, on the same bill as your visit.</TrustNote>}
                   </div>
                 </Card>
               </>

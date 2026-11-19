@@ -853,6 +853,21 @@ export const billingService = {
     ]);
     return { invoices: await presentInvoices(invoices), payments: await presentPayments(payments) };
   },
+  /** Bill summary per visit for the patient's visit pages: number, total, paid, balance, status. */
+  async billSummariesForVisits(visitIds: string[]) {
+    const out = new Map<string, { invoiceId: string; invoiceNumber: string; status: string; totalPaise: number; paidPaise: number; balancePaise: number }>();
+    if (!visitIds.length) return out;
+    await syncPendingCharges(visitIds);
+    const rows = await prisma.invoice.findMany({
+      where: { visitId: { in: visitIds }, status: { not: 'VOID' } },
+      select: { id: true, invoiceNumber: true, visitId: true, status: true, totalPaise: true, paidPaise: true },
+    });
+    for (const r of rows) {
+      if (r.visitId) out.set(r.visitId, { invoiceId: r.id, invoiceNumber: r.invoiceNumber, status: r.status, totalPaise: r.totalPaise, paidPaise: r.paidPaise, balancePaise: r.totalPaise - r.paidPaise });
+    }
+    return out;
+  },
+
   async paymentPatientId(id: string) {
     const p = await prisma.payment.findUnique({ where: { id }, select: { patientId: true } });
     if (!p) throw AppError.notFound('Receipt not found');

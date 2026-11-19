@@ -6,6 +6,7 @@ import { clientIp, getSession, requireAuth, requirePermission } from '../auth/au
 import { BREAK_GLASS_MINUTES, careAccess } from '../auth/care-access.service.js';
 import { receptionService } from '../reception/reception.service.js';
 import { clinicalService, TIMELINE_TYPES, type TimelineType } from './clinical.service.js';
+import { portalVisitsService } from './portal.service.js';
 
 /**
  * HTTP routes for the visits module, mounted at /api/visits — the doctor workspace.
@@ -85,6 +86,20 @@ visitsRouter.post(
     res.status(r.alreadyActive ? 200 : 201).json({ ...r, minutes: BREAK_GLASS_MINUTES });
   },
 );
+
+/* ---------------- Patient portal: own (and family) visits — household-checked + audited in the service ---------------- */
+
+visitsRouter.get('/mine', requirePermission('self:read'), async (req, res) => {
+  res.json({ journeys: await portalVisitsService.history(actor(req, res)) });
+});
+
+visitsRouter.get('/mine/referrals', requirePermission('self:read'), async (req, res) => {
+  res.json({ referrals: await portalVisitsService.referralsToBook(actor(req, res)) });
+});
+
+visitsRouter.get('/mine/:id', requirePermission('self:read'), validate({ params: z.object({ id: uuid }) }), async (req, res) => {
+  res.json(await portalVisitsService.detail(actor(req, res), res.locals.valid.params.id));
+});
 
 /* ---------------- Visit (consultation) ---------------- */
 

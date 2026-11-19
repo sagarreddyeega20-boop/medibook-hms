@@ -490,6 +490,7 @@ model Appointment {
   reason            String?
   tokenNumber       Int?              @map("token_number")
   rescheduledFromId String?           @map("rescheduled_from_id") @db.Uuid
+  sourceOrderId     String?           @map("source_order_id") @db.Uuid // REFERRAL order this booking fulfils
   cancelledAt       DateTime?         @map("cancelled_at") @db.Timestamptz(3)
   cancelReason      String?           @map("cancel_reason")
   checkedInAt       DateTime?         @map("checked_in_at") @db.Timestamptz(3)
@@ -501,6 +502,7 @@ model Appointment {
   department      Department    @relation(fields: [departmentId], references: [id])
   rescheduledFrom Appointment?  @relation("Reschedule", fields: [rescheduledFromId], references: [id])
   rescheduledTo   Appointment[] @relation("Reschedule")
+  sourceOrder     Order?        @relation("AppointmentSourceOrder", fields: [sourceOrderId], references: [id])
   visit           Visit?
   queueEvents     QueueEvent[]
   charges         Charge[]
@@ -510,6 +512,7 @@ model Appointment {
   // unique index created in the migration: appointments_doctor_slot_active_uniq.
   @@index([doctorId, slotStart])
   @@index([patientId])
+  @@index([sourceOrderId])
   @@map("appointments")
 }
 
@@ -654,6 +657,7 @@ model Order {
   referral     Referral?
   prescription Prescription?
   charges      Charge[]
+  appointments Appointment[] @relation("AppointmentSourceOrder")
 
   @@index([targetDepartmentId, type, status])
   @@index([patientId])

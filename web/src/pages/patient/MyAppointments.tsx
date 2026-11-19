@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  AppointmentCard, Button, Card, EmptyState, HeroBanner, Input, Modal, PatientGrid, PersonList, Select, SideCard, Tabs, Textarea, useToast,
+  AppointmentCard, Badge, Button, Card, EmptyState, HeroBanner, Input, Modal, PatientGrid, PersonList, Select, SideCard, Tabs, Textarea, useToast,
 } from '../../components';
 import { api, errorMessage } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { bookingApi, isUpcoming, type Appointment, type HouseholdMember } from '../../lib/booking';
 import { useLive } from '../../lib/live';
-import { tileDate, timeLabel, whenLabel } from '../../lib/time';
+import { dayLabel, keyOf, tileDate, timeLabel, whenLabel } from '../../lib/time';
+import { visitsApi, type ReferralToBook, type VisitJourney } from '../../lib/visits';
 import { PatientShell } from './PatientShell';
 
 const emptyMember = { fullName: '', gender: '', dateOfBirth: '', relationship: '' };
@@ -27,10 +28,15 @@ export function MyAppointments() {
   const [member, setMember] = useState(emptyMember);
   const [memberError, setMemberError] = useState<string>();
 
+  const [referrals, setReferrals] = useState<ReferralToBook[]>([]);
+  const [journeys, setJourneys] = useState<VisitJourney[] | null>(null);
+
   const load = useCallback(async () => {
-    const [a, h] = await Promise.all([bookingApi.mine(), bookingApi.household()]);
+    const [a, h, r, j] = await Promise.all([bookingApi.mine(), bookingApi.household(), visitsApi.referralsToBook(), visitsApi.history()]);
     setAppointments(a);
     setHousehold(h);
+    setReferrals(r);
+    setJourneys(j);
   }, []);
   useEffect(() => {
     load().catch((err) => toast.error('Could not load appointments', errorMessage(err)));
@@ -44,7 +50,13 @@ export function MyAppointments() {
     const past = all.filter((a) => !upcoming.includes(a) && a.status !== 'CANCELLED');
     return { upcoming, past, cancelled };
   }, [appointments]);
-  const shown = groups[tab as keyof typeof groups];
+  const shown = tab === 'past' ? [] : groups[tab as keyof typeof groups];
+  const pastVisits = (journeys ?? []).reduce((n, j) => n + j.visits.length, 0);
+  const upcomingCount = groups.upcoming.length + referrals.length;
+  const isEmpty = tab === 'upcoming' ? upcomingCount === 0 : tab === 'past' ? pastVisits === 0 : shown.length === 0;
+
+  const bookReferral = (r: ReferralToBook) =>
+    navigate(`/patient/doctors?${new URLSearchParams({ referral: r.orderId, department: r.toDepartment.id, ...(r.toDoctor ? { doctor: r.toDoctor.id } : {}) })}`);
 
   const cancel = async () => {
     if (!cancelling) return;
@@ -91,8 +103,8 @@ export function MyAppointments() {
             name={user?.name ?? ''}
             meta={<>Patient ID <strong>{user?.mrn}</strong>{household.length > 1 ? <> · {household.length - 1} family member{household.length > 2 ? 's' : ''}</> : null}</>}
             stats={[
-              { label: 'Upcoming', value: appointments ? groups.upcoming.length : '—' },
-              { label: 'Past visits', value: appointments ? groups.past.length : '—' },
+              { label: 'Upcoming', value: appointments ? upcomingCount : '—' },
+              { label: 'Past visits', value: journeys ? pastVisits : '—' },
               { label: 'Cancelled', value: appointments ? groups.cancelled.length : '—' },
             ]}
           />
@@ -104,19 +116,48 @@ export function MyAppointments() {
               value={tab}
               onChange={setTab}
               tabs={[
-                { id: 'upcoming', label: 'Upcoming', count: groups.upcoming.length },
-                { id: 'past', label: 'Past', count: groups.past.length },
+                { id: 'upcoming', label: 'Upcoming', count: upcomingCount },
+                { id: 'past', label: 'Past visits', count: pastVisits },
                 { id: 'cancelled', label: 'Cancelled', count: groups.cancelled.length },
               ]}
             />
-            {appointments && shown.length === 0 && (
+            {appointments && journeys && isEmpty && (
               <Card>
                 <EmptyState
-                  title={tab === 'upcoming' ? 'No upcoming appointments' : `No ${tab} appointments`}
+                  title={tab === 'upcoming' ? 'No upcoming appointments' : tab === 'past' ? 'No past visits yet' : 'No cancelled appointments'}
                   text="Book with a doctor in a few taps, or ask the assistant."
                   action={<Link to="/patient/doctors" className="mb-btn mb-btn--primary">Book a doctor</Link>}
                 />
               </Card>
+            )}
+            {tab === 'upcoming' && referrals.map((r) => (
+              <AppointmentCard
+                key={r.orderId}
+                date={tileDate(r.createdAt)}
+                title={`Referral to ${r.toDepartment.name}${r.toDoctor ? ` (${r.toDoctor.name})` : ''}`}
+                lines={[
+                  `Referred by ${r.fromDoctor.name} on ${dayLabel(keyOf(r.createdAt))}${household.length > 1 && r.patient ? ` · for ${r.patient.name}` : ''}`,
+                  ...(r.reason ? [`Reason: ${r.reason}`] : []),
+                ]}
+                status="TO_BE_BOOKED"
+                actions={<Button size="sm" onClick={() => bookReferral(r)}>Book now</Button>}
+              />
+            ))}
+            {tab === 'past' && (journeys ?? []).map((j) =>
+              j.visits.map((v, i) => (
+                <AppointmentCard
+                  key={v.id}
+                  date={tileDate(v.startedAt)}
+                  title={<Link to={`/patient/visits/${v.id}`}>{v.doctor.name}{v.department ? ` · ${v.department}` : ''}</Link>}
+                  lines={[
+                    ...(i === 0 && j.visits.length > 1 ? [<Badge key="j" tone="primary" size="sm">{`Journey · ${j.visits.length} visits`}</Badge>] : []),
+                    `${whenLabel(v.startedAt)}${household.length > 1 && j.patient ? ` · for ${j.patient.name}` : ''}`,
+                    `Visit ${v.visitNumber}${i > 0 ? ' · by referral' : ''}`,
+                  ]}
+                  status={v.status}
+                  actions={<Link to={`/patient/visits/${v.id}`} className="mb-btn mb-btn--secondary mb-btn--sm">View details</Link>}
+                />
+              )),
             )}
             {shown.map((a) => (
               <AppointmentCard
@@ -124,6 +165,7 @@ export function MyAppointments() {
                 date={tileDate(a.slotStart)}
                 title={`${a.doctor?.name ?? 'Doctor'} · ${a.doctor?.department?.name ?? ''}`}
                 lines={[
+                  ...(a.referredBy ? [<Badge key="ref" tone="primary" size="sm">{`Referred by ${a.referredBy.name}`}</Badge>] : []),
                   `${whenLabel(a.slotStart)} – ${timeLabel(a.slotEnd)}${forWhom(a)}`,
                   `Ref ${a.ref}${a.tokenNumber ? ` · Token T${a.tokenNumber}` : ''}${a.reason ? ` · Reason: ${a.reason}` : ''}${a.cancelReason ? ` · ${a.cancelReason}` : ''}`,
                 ]}

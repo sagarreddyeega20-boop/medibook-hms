@@ -81,6 +81,7 @@
   padding: var(--space-6);
 }
 .mb-card--flush { padding: 0; overflow: hidden; }
+.mb-card--flush > .mb-card__head { padding: var(--space-6) var(--space-6) 0; } /* a flush card's title keeps the card inset; the table stays edge to edge */
 .mb-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
 .mb-card__title { font-size: var(--text-lg); font-weight: var(--weight-bold); color: var(--dark); }
 .mb-card__subtitle { font-size: var(--text-sm); color: var(--muted); }

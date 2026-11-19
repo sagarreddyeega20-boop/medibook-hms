@@ -349,13 +349,115 @@ export const ordersService = {
     );
   },
 
-  /** Inside check-in / walk-in: the patient arrived for a booked referral → link the visit, SCHEDULED → IN_PROGRESS. */
-  async attachReferralVisit(input: { patientId: string; doctorId: string; visitId: string }, tx: Prisma.TransactionClient) {
-    const ref = await tx.referral.findFirst({
-      where: { patientId: input.patientId, toDoctorId: input.doctorId, toVisitId: null, order: { status: { in: ['ORDERED', 'SCHEDULED'] } } },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true, orderId: true },
+  /** Inside cancel: the referral's booking was cancelled → back to ORDERED ("to be booked") so it can be booked again. */
+  async releaseReferralBooking(orderId: string, tx: Prisma.TransactionClient) {
+    await tx.order.updateMany({ where: { id: orderId, type: 'REFERRAL', status: 'SCHEDULED' }, data: { status: 'ORDERED', scheduledFor: null } });
+  },
+
+  /** Inside reschedule: the referral follows its booking to the new slot (and doctor). */
+  async moveReferralBooking(orderId: string, appt: { doctorId: string; slotStart: Date }, tx: Prisma.TransactionClient) {
+    const r = await tx.order.updateMany({ where: { id: orderId, type: 'REFERRAL', status: 'SCHEDULED' }, data: { targetDoctorId: appt.doctorId, scheduledFor: appt.slotStart } });
+    if (r.count) await tx.referral.update({ where: { orderId }, data: { toDoctorId: appt.doctorId } });
+  },
+
+  /** Who referred each booking (doctor name + department) — names only, no clinical reason (reception sees these too). */
+  async referralSources(orderIds: string[]) {
+    const out = new Map<string, { orderId: string; fromDoctor: { id: string; name: string; department: string | null }; createdAt: Date }>();
+    if (!orderIds.length) return out;
+    const rows = await prisma.order.findMany({ where: { id: { in: [...new Set(orderIds)] }, type: 'REFERRAL' }, select: { id: true, orderingDoctorId: true, createdAt: true } });
+    const doctors = await staffService.doctorsByIds([...new Set(rows.map((r) => r.orderingDoctorId))]);
+    for (const r of rows) {
+      const d = doctors.get(r.orderingDoctorId);
+      out.set(r.id, { orderId: r.id, fromDoctor: { id: r.orderingDoctorId, name: d?.fullName ?? 'Doctor', department: d?.department?.name ?? null }, createdAt: r.createdAt });
+    }
+    return out;
+  },
+
+  /* ---------------- Patient portal (own + family; callers check the household and audit) ---------------- */
+
+  /** Referrals the patient still has to book (ORDERED), with the reason — it is the patient's own record. */
+  async referralsToBookFor(patientIds: string[]) {
+    if (!patientIds.length) return [];
+    const rows = await prisma.order.findMany({
+      where: { type: 'REFERRAL', status: 'ORDERED', patientId: { in: patientIds } },
+      orderBy: [{ createdAt: 'desc' }],
+      select: {
+        id: true, orderNumber: true, patientId: true, visitId: true, priority: true, createdAt: true, orderingDoctorId: true, targetDoctorId: true,
+        targetDepartment: { select: { id: true, code: true, name: true } }, referral: { select: { reason: true } },
+      },
     });
+    const doctors = await staffService.doctorsByIds([...new Set(rows.flatMap((r) => [r.orderingDoctorId, r.targetDoctorId].filter((x): x is string => !!x)))]);
+    return rows.map((r) => ({
+      orderId: r.id, orderNumber: r.orderNumber, patientId: r.patientId, fromVisitId: r.visitId, priority: r.priority, createdAt: r.createdAt,
+      reason: r.referral?.reason ?? null,
+      fromDoctor: { id: r.orderingDoctorId, name: doctors.get(r.orderingDoctorId)?.fullName ?? 'Doctor', department: doctors.get(r.orderingDoctorId)?.department?.name ?? null },
+      toDepartment: r.targetDepartment,
+      toDoctor: r.targetDoctorId ? { id: r.targetDoctorId, name: doctors.get(r.targetDoctorId)?.fullName ?? 'Doctor' } : null,
+    }));
+  },
+
+  /** Referral links between a patient's visits (journey edges): from visit → order (→ visit it led to, if seen). */
+  async referralLinks(patientIds: string[]) {
+    if (!patientIds.length) return [];
+    return prisma.referral.findMany({
+      where: { patientId: { in: patientIds }, order: { status: { not: 'CANCELLED' } } },
+      select: { orderId: true, fromVisitId: true, toVisitId: true },
+    });
+  },
+
+  /**
+   * What the patient may see of the orders on these visits. Patient-facing fields only:
+   *   - tests: title, status and — only once RESULT_READY — the findings, values and the report file (never the doctor's indication);
+   *   - prescriptions: medicine, dose, frequency, days, instructions, dispensed or not (never the prescriber's notes);
+   *   - referrals: where to, reason, status, and the visit it led to.
+   */
+  async patientFacingForVisits(visitIds: string[]) {
+    if (!visitIds.length) return [];
+    const rows = await present(await prisma.order.findMany({ where: { visitId: { in: visitIds } }, orderBy: { createdAt: 'asc' }, select: orderSelect }));
+    return rows.map((o) => {
+      const base = { id: o.id, orderNumber: o.orderNumber, visitId: o.visitId, type: o.type, status: o.status, title: o.title, createdAt: o.createdAt, orderingDoctor: { id: o.orderingDoctor.id, name: o.orderingDoctor.name } };
+      if (o.type === 'LAB' || o.type === 'RADIOLOGY') {
+        const ready = o.status === 'RESULT_READY';
+        return {
+          ...base, department: o.targetDepartment.name,
+          results: ready ? o.results.map((r) => ({ id: r.id, summary: r.summary, values: r.values, isAbnormal: r.isAbnormal, fileUrl: r.fileUrl, reportedAt: r.reportedAt })) : [],
+        };
+      }
+      if (o.type === 'REFERRAL') {
+        return {
+          ...base, department: o.targetDepartment.name,
+          referral: { reason: o.referral?.reason ?? null, toDepartment: o.targetDepartment, toDoctor: o.targetDoctor, toVisitId: o.referral?.toVisitId ?? null, scheduledFor: o.scheduledFor },
+        };
+      }
+      return {
+        ...base, department: o.targetDepartment.name,
+        prescription: o.prescription
+          ? {
+              id: o.prescription.id, status: o.status === 'CANCELLED' ? 'CANCELLED' : o.prescription.status,
+              items: o.prescription.items.map((i) => ({
+                id: i.id, medicineName: i.medicineName, dose: i.dose, frequency: i.frequency, durationDays: i.durationDays, route: i.route, instructions: i.instructions,
+                quantity: i.quantity, dispensedQuantity: i.dispensedQuantity, dispensed: i.dispensedQuantity >= i.quantity,
+              })),
+            }
+          : null,
+      };
+    });
+  },
+
+  /** Inside check-in / walk-in: the patient arrived for a booked referral → link the visit, SCHEDULED → IN_PROGRESS. */
+  async attachReferralVisit(input: { patientId: string; doctorId: string; visitId: string; orderId?: string | null }, tx: Prisma.TransactionClient) {
+    // The booking's own referral when known; otherwise a referral already booked with this doctor wins over one
+    // still waiting to be booked (oldest first within each).
+    const find = (statuses: OrderStatus[]) =>
+      tx.referral.findFirst({
+        where: {
+          patientId: input.patientId, toDoctorId: input.doctorId, toVisitId: null, order: { status: { in: statuses } },
+          ...(input.orderId ? { orderId: input.orderId } : {}),
+        },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, orderId: true },
+      });
+    const ref = (await find(['SCHEDULED'])) ?? (await find(['ORDERED']));
     if (!ref) return null;
     await tx.referral.update({ where: { id: ref.id }, data: { toVisitId: input.visitId } });
     await tx.order.update({ where: { id: ref.orderId }, data: { status: 'IN_PROGRESS', startedAt: new Date(), targetDoctorId: input.doctorId } });

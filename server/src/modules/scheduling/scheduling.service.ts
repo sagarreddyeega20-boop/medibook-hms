@@ -219,22 +219,26 @@ function assertBookable(slot: Slot | null): asserts slot is Slot {
 
 const apptSelect = {
   id: true, ref: true, patientId: true, doctorId: true, departmentId: true, slotStart: true, slotEnd: true, status: true, source: true,
-  reason: true, tokenNumber: true, cancelledAt: true, cancelReason: true, checkedInAt: true, rescheduledFromId: true, createdAt: true,
+  reason: true, tokenNumber: true, cancelledAt: true, cancelReason: true, checkedInAt: true, rescheduledFromId: true, sourceOrderId: true, createdAt: true,
 } satisfies Prisma.AppointmentSelect;
 type ApptRow = Prisma.AppointmentGetPayload<{ select: typeof apptSelect }>;
 
 async function present(rows: ApptRow[]) {
-  const [doctors, patients, prepaid] = await Promise.all([
+  const [doctors, patients, prepaid, sources] = await Promise.all([
     staffService.doctorsByIds([...new Set(rows.map((r) => r.doctorId))]),
     patientsService.summaries(rows.map((r) => r.patientId)),
     billingService.prepaidStatus(rows.map((r) => r.id)),
+    ordersService.referralSources(rows.map((r) => r.sourceOrderId).filter((x): x is string => !!x)),
   ]);
   return rows.map((r) => {
     const d = doctors.get(r.doctorId);
     const p = patients.get(r.patientId);
+    const src = r.sourceOrderId ? sources.get(r.sourceOrderId) : undefined;
     return {
       ...r,
       date: localDateKey(r.slotStart),
+      /** Booked from a doctor's referral: who referred (name only — no clinical reason here). */
+      referredBy: src ? src.fromDoctor : null,
       /** PAID_ONLINE / REFUNDED for prepaid bookings; PAY_AT_HOSPITAL otherwise. */
       payment: (prepaid.get(r.id) ?? 'PAY_AT_HOSPITAL') as PrepaidState | 'PAY_AT_HOSPITAL',
       doctor: d ? { id: d.id, name: d.fullName, specialty: d.specialty, department: d.department, consultationFeePaise: d.consultationFeePaise } : null,
@@ -400,10 +404,10 @@ export const schedulingService = {
     const doctor = await staffService.doctorById(rec.doctorId);
     if (!doctor.department) throw AppError.badRequest('This doctor has no department yet');
     assertBookable(await findSlot(rec.doctorId, new Date(rec.slotStart), actor.session.userId));
-    // Booking a doctor's referral: reception only, same patient, the department (and doctor) it was sent to.
+    // Booking a doctor's referral (reception, or the patient / family account holder — assertCanActFor checked the
+    // household): same patient, the department (and doctor) it was sent to.
     let referralReason: string | null = null;
     if (input.referralOrderId) {
-      if (!actor.session.permissions.includes('appointments:book')) throw AppError.forbidden('Referrals are booked at reception');
       const r = await ordersService.assertReferralBookable(input.referralOrderId, { patientId: input.patientId, doctorId: doctor.id, departmentId: doctor.department.id });
       referralReason = `Referral from ${r.fromDoctorName}`;
     }
@@ -417,6 +421,7 @@ export const schedulingService = {
             ref, patientId: input.patientId, doctorId: doctor.id, departmentId: doctor.department!.id,
             slotStart: new Date(rec.slotStart), slotEnd: new Date(rec.slotEnd), status: 'BOOKED',
             source: actor.session.kind === 'PATIENT' ? 'ONLINE' : 'RECEPTION', reason: input.reason?.trim() || referralReason,
+            sourceOrderId: input.referralOrderId ?? null,
           },
           select: apptSelect,
         });
@@ -458,6 +463,7 @@ export const schedulingService = {
     const updated = await prisma.$transaction(async (tx) => {
       const r = await tx.appointment.updateMany({ where: { id: appointmentId, status: 'BOOKED' }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: reason.trim() } });
       if (!r.count) throw new AppError(409, 'NOT_CANCELLABLE', 'This appointment changed while you were cancelling it. Refresh and try again.');
+      if (appt.sourceOrderId) await ordersService.releaseReferralBooking(appt.sourceOrderId, tx); // the referral is "to be booked" again
       await auditService.record(
         { actorId: actor.session.userId, action: AuditAction.APPOINTMENT_CANCELLED, entity: 'appointments', entityId: appt.id, patientId: appt.patientId, reason: reason.trim(), ip: actor.ip, metadata: { ref: appt.ref, slotStart: appt.slotStart.toISOString() } },
         tx,
@@ -483,6 +489,7 @@ export const schedulingService = {
     const doctor = await staffService.doctorById(rec.doctorId);
     if (!doctor.department) throw AppError.badRequest('This doctor has no department yet');
     assertBookable(await findSlot(rec.doctorId, new Date(rec.slotStart), actor.session.userId));
+    if (old.sourceOrderId && doctor.department.id !== old.departmentId) throw AppError.badRequest('A referral stays in the department it was sent to — pick a doctor there');
 
     let created: ApptRow;
     try {
@@ -493,10 +500,11 @@ export const schedulingService = {
         const a = await tx.appointment.create({
           data: {
             ref, patientId: old.patientId, doctorId: doctor.id, departmentId: doctor.department!.id, slotStart: new Date(rec.slotStart), slotEnd: new Date(rec.slotEnd),
-            status: 'BOOKED', source: old.source, reason: old.reason, rescheduledFromId: old.id,
+            status: 'BOOKED', source: old.source, reason: old.reason, rescheduledFromId: old.id, sourceOrderId: old.sourceOrderId,
           },
           select: apptSelect,
         });
+        if (old.sourceOrderId) await ordersService.moveReferralBooking(old.sourceOrderId, { doctorId: a.doctorId, slotStart: a.slotStart }, tx);
         await billingService.movePrepaid(old.id, a.id, tx); // a prepayment follows the booking
         await auditService.record(
           {
@@ -554,6 +562,13 @@ export const schedulingService = {
   async listForPatients(patientIds: string[], opts: { take?: number } = {}) {
     const rows = await prisma.appointment.findMany({ where: { patientId: { in: patientIds } }, orderBy: { slotStart: 'desc' }, take: opts.take ?? 100, select: apptSelect });
     return present(rows);
+  },
+
+  /** appointment id → the REFERRAL order it was booked from (journey links for the patient portal). */
+  async sourceOrders(appointmentIds: string[]) {
+    if (!appointmentIds.length) return new Map<string, string>();
+    const rows = await prisma.appointment.findMany({ where: { id: { in: [...new Set(appointmentIds)] }, sourceOrderId: { not: null } }, select: { id: true, sourceOrderId: true } });
+    return new Map(rows.map((r) => [r.id, r.sourceOrderId!]));
   },
 
   /** Today's (or a day's) appointments, all doctors — reception stats. */

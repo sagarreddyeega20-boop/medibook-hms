@@ -154,7 +154,7 @@ export const receptionService = {
         );
         await schedulingService.markCheckedIn(appt.id, token, tx);
         await billingService.attachPrepaidToVisit(appt.id, v.id, tx); // a prepaid consultation's bill becomes the visit's bill
-        await ordersService.attachReferralVisit({ patientId: v.patientId, doctorId: v.doctorId, visitId: v.id }, tx);
+        await ordersService.attachReferralVisit({ patientId: v.patientId, doctorId: v.doctorId, visitId: v.id, orderId: appt.sourceOrderId }, tx);
         await queueEvents(tx, { visitId: v.id, patientId: v.patientId, doctorId: v.doctorId, appointmentId: appt.id, tokenNumber: token }, ['CHECKED_IN', 'TOKEN_ISSUED']);
         await auditService.record(
           { actorId: actor.session.userId, action: AuditAction.CHECKED_IN, entity: 'visits', entityId: v.id, patientId: v.patientId, ip: actor.ip, metadata: { ref: appt.ref, token, visitNumber: v.visitNumber } },

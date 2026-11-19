@@ -38,7 +38,7 @@ export const STATUS_TONES: Record<string, BadgeTone> = {
   // timeline event types + order types / priority
   VISIT: 'neutral', NOTE: 'primary', LAB: 'info', RADIOLOGY: 'info', RESULT: 'success', REFERRAL: 'pending', PRESCRIPTION: 'primary', MEDICATION: 'primary',
   ROUTINE: 'neutral', URGENT: 'warning', STAT: 'danger', ABNORMAL: 'danger', DISPENSED: 'success', PARTIALLY_DISPENSED: 'pending',
-  TO_BOOK: 'warning',
+  TO_BOOK: 'warning', TO_BE_BOOKED: 'warning', NOT_DISPENSED: 'pending',
   // pharmacy stock
   IN_STOCK: 'success', LOW_STOCK: 'warning', OUT_OF_STOCK: 'danger', PURCHASE: 'success', DISPENSE: 'info', ADJUSTMENT: 'neutral', RETURN: 'neutral',
   // department-queue audit events
@@ -70,6 +70,7 @@ export const STATUS_LABELS: Record<string, string> = {
   RADIOLOGY: 'Radiology',
   NOTE: 'Note',
   TO_BOOK: 'To book',
+  TO_BE_BOOKED: 'To be booked',
   STAT: 'STAT',
   PURCHASE: 'Stock in',
   DISPENSE: 'Dispensed',
